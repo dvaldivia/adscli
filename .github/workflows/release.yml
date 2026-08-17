@@ -1,0 +1,245 @@
+name: release
+
+# Triggered on semver tag pushes (e.g. `v1.2.3`). Builds adscli for
+# linux + darwin × x86_64 + arm64, uploads tarballs + checksums to the
+# GitHub Release, and renders the Homebrew cask in
+# dvaldivia/homebrew-tap when the HOMEBREW_TAP_GITHUB_TOKEN secret
+# is available.
+#
+# Cross-compilation strategy (same as tukituki):
+#   - linux x86_64: native on `ubuntu-latest`.
+#   - linux aarch64: cross-compiled with the apt `gcc-aarch64-linux-gnu`
+#     toolchain.
+#   - darwin x86_64 + darwin aarch64: native + rustup target on
+#     `macos-latest`.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or commit to build"
+        required: true
+        default: "v0.0.0-dev"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  build:
+    name: build ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-latest
+            os: linux
+            arch: x86_64
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-latest
+            os: linux
+            arch: arm64
+            cross_linker: aarch64-linux-gnu-gcc
+            cross_strip: aarch64-linux-gnu-strip
+            apt_cross_pkg: gcc-aarch64-linux-gnu
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            os: darwin
+            arch: x86_64
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            os: darwin
+            arch: arm64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross toolchain (linux arm64)
+        if: matrix.apt_cross_pkg
+        shell: bash
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ${{ matrix.apt_cross_pkg }}
+
+      - name: Build
+        shell: bash
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross_linker }}
+        run: |
+          export ADSCLI_VERSION="${GITHUB_REF_NAME#v}"
+          cargo build --release --target ${{ matrix.target }} -p adscli
+
+      - name: Strip + package
+        shell: bash
+        run: |
+          mkdir -p dist
+          BIN_PATH="target/${{ matrix.target }}/release/adscli"
+          if [[ -n "${{ matrix.cross_strip }}" ]]; then
+            ${{ matrix.cross_strip }} "$BIN_PATH" || true
+          elif [[ "${{ matrix.os }}" == "linux" ]]; then
+            strip "$BIN_PATH" || true
+          else
+            strip -x "$BIN_PATH" || true
+          fi
+          TARBALL="adscli_${{ matrix.os }}_${{ matrix.arch }}.tar.gz"
+          tar -C "target/${{ matrix.target }}/release" -czf "dist/$TARBALL" adscli
+          (cd dist && shasum -a 256 "$TARBALL" > "$TARBALL.sha256")
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: adscli-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      sha_linux_x86_64: ${{ steps.sha.outputs.sha_linux_x86_64 }}
+      sha_linux_arm64: ${{ steps.sha.outputs.sha_linux_arm64 }}
+      sha_darwin_x86_64: ${{ steps.sha.outputs.sha_darwin_x86_64 }}
+      sha_darwin_arm64: ${{ steps.sha.outputs.sha_darwin_arm64 }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten + collect checksums
+        id: sha
+        shell: bash
+        run: |
+          mkdir -p dist
+          find artifacts -type f \( -name '*.tar.gz' -o -name '*.sha256' \) \
+            -exec mv {} dist/ \;
+          (cd dist && shasum -a 256 *.tar.gz > checksums.txt)
+          cat dist/checksums.txt
+          for pair in \
+            "linux_x86_64:linux_x86_64" \
+            "linux_arm64:linux_arm64" \
+            "darwin_x86_64:darwin_x86_64" \
+            "darwin_arm64:darwin_arm64"
+          do
+            key="${pair%%:*}"; suffix="${pair##*:}"
+            f="dist/adscli_${suffix}.tar.gz"
+            if [[ -f "$f" ]]; then
+              sha=$(shasum -a 256 "$f" | awk '{print $1}')
+              echo "sha_${key}=${sha}" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Meta
+        id: meta
+        shell: bash
+        run: |
+          echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Build changelog from commit titles
+        id: changelog
+        shell: bash
+        run: |
+          set -euo pipefail
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          {
+            echo 'body<<ADSCLI_CHANGELOG_EOF'
+            echo "## Changes"
+            echo ""
+            if [[ -n "$PREV" ]]; then
+              git log --no-merges --pretty=format:"- %s (%h)" "${PREV}..${GITHUB_REF_NAME}"
+            else
+              git log --no-merges --pretty=format:"- %s (%h)" "${GITHUB_REF_NAME}"
+            fi
+            echo ""
+            echo ""
+            echo 'ADSCLI_CHANGELOG_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/checksums.txt
+          fail_on_unmatched_files: true
+          body: ${{ steps.changelog.outputs.body }}
+          generate_release_notes: true
+
+  homebrew:
+    name: update homebrew tap
+    needs: release
+    if: ${{ github.repository == 'dvaldivia/adscli' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tap token
+        id: gate
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          if [[ -z "${TOKEN:-}" ]]; then
+            echo "::notice::HOMEBREW_TAP_GITHUB_TOKEN not set; skipping tap update."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Render cask
+        if: steps.gate.outputs.skip != 'true'
+        shell: bash
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          SHA_LINUX_X86_64: ${{ needs.release.outputs.sha_linux_x86_64 }}
+          SHA_LINUX_ARM64: ${{ needs.release.outputs.sha_linux_arm64 }}
+          SHA_DARWIN_X86_64: ${{ needs.release.outputs.sha_darwin_x86_64 }}
+          SHA_DARWIN_ARM64: ${{ needs.release.outputs.sha_darwin_arm64 }}
+        run: |
+          mkdir -p rendered/Casks
+          ./homebrew/render.sh > rendered/Casks/adscli.rb
+
+      - name: Push to tap
+        if: steps.gate.outputs.skip != 'true'
+        env:
+          TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${TOKEN}@github.com/dvaldivia/homebrew-tap" tap
+          mkdir -p tap/Casks
+          cp rendered/Casks/adscli.rb tap/Casks/adscli.rb
+          cd tap
+          git config user.name  "adscli release bot"
+          git config user.email "adscli-bot@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "Cask already up-to-date for v${VERSION}; nothing to push."
+            exit 0
+          fi
+          git add Casks/adscli.rb
+          git commit -m "adscli ${VERSION}"
+          git push

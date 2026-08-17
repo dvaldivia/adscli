@@ -1,0 +1,16 @@
+[package]
+name = "adscli-tui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "k9s-style ratatui browser for Google Ads campaigns"
+
+[dependencies]
+adscli-api = { workspace = true }
+adscli-config = { workspace = true }
+ratatui = { workspace = true }
+crossterm = { workspace = true }
+serde_json = { workspace = true }

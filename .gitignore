@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+.adscli.yaml
+.adscli.yml
+google-ads.yaml
+credentials.json
+.idea/
+.vscode/
+*.swp

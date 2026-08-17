@@ -1,0 +1,31 @@
+[package]
+name = "adscli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Agent-first CLI and TUI for the Google Ads API"
+
+[[bin]]
+name = "adscli"
+path = "src/main.rs"
+
+[dependencies]
+adscli-api = { workspace = true }
+adscli-config = { workspace = true }
+adscli-tui = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tabwriter = { workspace = true }
+
+[build-dependencies]
+
+[dev-dependencies]
+assert_cmd = { workspace = true }
+predicates = { workspace = true }
+tempfile = { workspace = true }
+mockito = { workspace = true }
+serde_json = { workspace = true }

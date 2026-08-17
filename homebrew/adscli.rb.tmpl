@@ -1,0 +1,49 @@
+# Homebrew cask template for adscli.
+#
+# `homebrew/render.sh` fills in __VERSION__ and the four __SHA__
+# placeholders, then commits the rendered file to
+# dvaldivia/homebrew-tap/Casks/adscli.rb.
+#
+# Install: brew install dvaldivia/tap/adscli
+
+cask "adscli" do
+  version "__VERSION__"
+
+  on_macos do
+    on_arm do
+      sha256 "__SHA_DARWIN_ARM64__"
+      url "https://github.com/dvaldivia/adscli/releases/download/v#{version}/adscli_darwin_arm64.tar.gz"
+    end
+    on_intel do
+      sha256 "__SHA_DARWIN_X86_64__"
+      url "https://github.com/dvaldivia/adscli/releases/download/v#{version}/adscli_darwin_x86_64.tar.gz"
+    end
+  end
+
+  on_linux do
+    on_arm do
+      sha256 "__SHA_LINUX_ARM64__"
+      url "https://github.com/dvaldivia/adscli/releases/download/v#{version}/adscli_linux_arm64.tar.gz"
+    end
+    on_intel do
+      sha256 "__SHA_LINUX_X86_64__"
+      url "https://github.com/dvaldivia/adscli/releases/download/v#{version}/adscli_linux_x86_64.tar.gz"
+    end
+  end
+
+  name "adscli"
+  desc "Agent-first CLI and TUI for the Google Ads API"
+  homepage "https://github.com/dvaldivia/adscli"
+
+  livecheck do
+    skip "Auto-generated on release."
+  end
+
+  binary "adscli"
+
+  postflight do
+    if OS.mac?
+      system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/adscli"], must_succeed: false
+    end
+  end
+end
