@@ -3,8 +3,10 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>adscli — Google Ads CLI and TUI</title>
-  <meta name="description" content="Agent-first CLI and k9s-style TUI for the Google Ads API v25. Browse campaigns, asset groups, and assets. Self-describing --help.">
+  <title>adscli</title>
+  <meta name="application-name" content="adscli">
+  <meta name="apple-mobile-web-app-title" content="adscli">
+  <meta name="description" content="adscli is a desktop command-line application for managing Google Ads campaigns, asset groups, assets, and reports through the Google Ads API.">
   <link rel="canonical" href="https://adscli.dev/">
   <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
@@ -21,10 +23,11 @@
   <nav>
     <div class="wrap">
       <a class="brand" href="/">
-        <img src="assets/logo.jpg" width="36" height="36" alt="adscli">
-        adscli
+        <img src="assets/logo.jpg" width="36" height="36" alt="">
+        <span>adscli</span>
       </a>
       <div class="links">
+        <a href="#purpose">Purpose</a>
         <a href="#install">Install</a>
         <a href="#auth">Auth</a>
         <a href="https://github.com/dvaldivia/adscli">GitHub</a>
@@ -35,17 +38,47 @@
 
   <header class="hero">
     <div class="wrap">
-      <h1>Google Ads,<br>from the terminal.</h1>
+      <p class="eyebrow">Desktop app for Google Ads</p>
+      <h1>adscli</h1>
       <p class="lede">
-        Agent-first CLI and a k9s-style TUI for the Google Ads API v25.
-        Browse campaigns, asset groups, and assets. Every command documents itself.
+        adscli is a desktop command-line application named <strong>adscli</strong>.
+        Sign in with your Google account, then list and change campaigns,
+        asset groups, assets, and reports from a terminal or a k9s-style TUI.
       </p>
       <div class="cta">
-        <a class="btn primary" href="#install">Install</a>
+        <a class="btn primary" href="#purpose">What adscli does</a>
+        <a class="btn" href="#install">Install</a>
         <a class="btn" href="https://github.com/dvaldivia/adscli">Source</a>
       </div>
     </div>
   </header>
+
+  <section id="purpose">
+    <div class="wrap prose">
+      <h2>Purpose of adscli</h2>
+      <p>The application name is <strong>adscli</strong>. adscli is an open-source
+        desktop program you install on your computer. It is not a website you log
+        into. This page is the product homepage for adscli.</p>
+      <p>adscli’s purpose is to let people operate their own Google Ads accounts
+        from a command line or a terminal user interface. After you install adscli
+        and run <code>adscli login</code>, you grant adscli permission to call the
+        Google Ads API as you. You can then:</p>
+      <ul>
+        <li>list the Google Ads accounts your Google user can already open</li>
+        <li>browse, create, update, enable, or pause campaigns</li>
+        <li>manage Performance Max asset groups and assets</li>
+        <li>pull performance reports and run GAQL queries</li>
+      </ul>
+      <p>adscli requests the Google Ads scope
+        (<code>https://www.googleapis.com/auth/adwords</code>) so those commands
+        can run. It does not request Gmail, Drive, Calendar, or other Google data.
+        API calls go from your copy of adscli to Google. adscli does not operate a
+        backend that stores your Ads data. See the
+        <a href="privacy.html">adscli privacy policy</a>.</p>
+      <p>adscli is built for humans and for software agents. Every command documents
+        itself with <code>adscli --help</code> and <code>adscli schema --json</code>.</p>
+    </div>
+  </section>
 
   <section>
     <div class="wrap">
@@ -102,10 +135,11 @@ adscli campaigns list --json --limit 20</pre>
     <div class="wrap prose">
       <h2>Auth</h2>
       <p>
-        Every adscli binary ships a shared Desktop OAuth client. <code>adscli login</code>
-        uses it unless you set <code>ADSCLI_CLIENT_ID</code> / <code>ADSCLI_CLIENT_SECRET</code>
-        (or the same keys in a config file). You still click Allow as yourself. The Desktop
-        secret is public-by-design — extracting it does not open anyone’s Ads account.
+        Official adscli release binaries may ship a shared Desktop OAuth client.
+        <code>adscli login</code> uses it unless you set
+        <code>ADSCLI_CLIENT_ID</code> / <code>ADSCLI_CLIENT_SECRET</code>
+        (or the same keys in a config file). You still click Allow as yourself.
+        Source builds do not include those values.
       </p>
       <p>
         The Google Ads <strong>developer token is not shipped</strong>. Set

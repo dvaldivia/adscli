@@ -10,8 +10,7 @@ mod paths;
 mod store;
 
 pub use bundled::{
-    DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET, bundled_client_id, bundled_client_secret,
-    bundled_developer_token, has_bundled_oauth,
+    bundled_client_id, bundled_client_secret, bundled_developer_token, has_bundled_oauth,
 };
 pub use file::{ConfigFile, CredentialsFile, redacted_map};
 pub use ids::{extract_resource_id, normalize_customer_id, resource_name, strip_customer_prefix};

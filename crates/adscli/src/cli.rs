@@ -26,11 +26,11 @@ INTERACTIVE TUI (default, requires a TTY):
   like k9s. In a pipe or script this exits immediately and tells you
   which subcommand to use instead.
 
-CONFIGURATION (flag > env > file > built-in Desktop client):
+CONFIGURATION (flag > env > file > official-build bundle):
   ADSCLI_DEVELOPER_TOKEN   required for every API call
   ADSCLI_CUSTOMER_ID       10-digit account (dashes ok)
   ADSCLI_LOGIN_CUSTOMER_ID MCC / manager account
-  ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET   optional; override the shared client
+  ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET   optional; override a release-bundled client
   ADSCLI_REFRESH_TOKEN
   Config file: --config, ./.adscli.yaml, ~/.config/adscli/config.yaml
 
@@ -75,11 +75,11 @@ pub struct Cli {
     #[arg(long, global = true, env = "ADSCLI_DEVELOPER_TOKEN")]
     pub developer_token: Option<String>,
 
-    /// OAuth client id (Desktop app). Defaults to the shared adscli client.
+    /// OAuth client id (Desktop app). Official binaries may bake one in.
     #[arg(long, global = true, env = "ADSCLI_CLIENT_ID")]
     pub client_id: Option<String>,
 
-    /// OAuth client secret. Defaults to the shared adscli Desktop secret.
+    /// OAuth client secret. Official binaries may bake one in.
     #[arg(long, global = true, env = "ADSCLI_CLIENT_SECRET")]
     pub client_secret: Option<String>,
 
@@ -199,42 +199,38 @@ pub enum Command {
 const LOGIN_ABOUT: &str = "\
 Sign in to Google Ads with a browser (OAuth 2.0 Desktop / Installed app).
 
-DEFAULT CLIENT (compiled into every binary):
-  client_id     REDACTED
-  client_secret REDACTED
+OFFICIAL BUILDS (Homebrew / GitHub Release):
+  Release CI compiles in a shared Desktop client from GitHub secrets
+  (ADSCLI_BUNDLED_CLIENT_ID / SECRET). Those values are not in git.
+  Then `adscli login` is enough for OAuth. You still need
+  ADSCLI_DEVELOPER_TOKEN (or a bundled token) for API calls.
 
-  You do not need to export those. adscli login uses them unless
-  overridden. The developer token is NOT shipped — set
-  ADSCLI_DEVELOPER_TOKEN (or config.yaml) for API calls.
+  Check `adscli auth status --json` → oauth_from_bundle /
+  has_oauth_client. Secrets are never printed.
 
   Resolution, highest wins:
     --client-id / --client-secret
     ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET
     client_id / client_secret in config.yaml or credentials.json
-    the compiled defaults above
-
-  When the defaults win: `adscli auth status --json` and
-  `adscli config show --json` report oauth_from_bundle=true and
-  has_oauth_client=true. Secrets are never printed.
+    the compile-time bundle (official binaries only)
 
 ONE SHARED CLIENT (yes, branding is for this):
-  The Cloud OAuth consent-screen branding (app name, logo, homepage
-  https://adscli.dev, privacy https://adscli.dev/privacy.html) is
-  what users see when they click Allow. Every adscli user shares
-  this Desktop client. They still sign in as themselves; they do
-  not create their own Cloud project.
+  The Cloud OAuth consent-screen branding (app name adscli, logo,
+  homepage https://adscli.dev, privacy https://adscli.dev/privacy.html)
+  is what users see when they click Allow. Official-binary users share
+  that Desktop client. They still sign in as themselves.
 
   Until Google verifies the app, only listed test users can finish
-  the consent screen. Unverified users see Advanced → Go to <app>.
+  the consent screen. Unverified users see Advanced → Go to adscli.
 
-  Desktop client_secret is public-by-design (it ships in the
-  binary; Google assumes installed apps cannot keep secrets).
+  Desktop client_secret is public-by-design once it lives in a
+  binary; Google assumes installed apps cannot keep secrets.
   Extracting it does not grant anyone's Ads account — a human
   must still click Allow. PKCE still protects the loopback code
   exchange. A leaked developer token is worse: it is the app's
   API permit and quota.
 
-BRING YOUR OWN CLIENT (a different Cloud project):
+SOURCE BUILDS / A DIFFERENT CLOUD PROJECT:
   1. Google Cloud project + enable Google Ads API
   2. OAuth consent screen, scope https://www.googleapis.com/auth/adwords
   3. Credentials → OAuth client ID → Desktop app
@@ -266,10 +262,10 @@ WHAT HAPPENS:
 
 AGENTS:
   Do not call login from a script. Set ADSCLI_REFRESH_TOKEN and
-  ADSCLI_DEVELOPER_TOKEN (client id/secret only to override the
-  built-in client). Use `adscli auth status --json` to inspect
-  whether credentials are present. Use --device on a machine with
-  no browser; use --code to exchange a code obtained elsewhere.
+  ADSCLI_DEVELOPER_TOKEN (and client id/secret if this binary has
+  no bundle). Use `adscli auth status --json` to inspect whether
+  credentials are present. Use --device on a machine with no
+  browser; use --code to exchange a code obtained elsewhere.
 ";
 
 #[derive(Debug, Clone, clap::Args)]

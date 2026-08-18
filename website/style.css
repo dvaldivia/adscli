@@ -56,14 +56,23 @@ nav .links a:hover { color: var(--ink); text-decoration: none; }
     url("assets/banner.jpg") right center / cover no-repeat;
 }
 .hero .wrap { position: relative; padding: 4.5rem 1.25rem; }
+.hero .eyebrow {
+  margin: 0 0 .5rem;
+  color: var(--gold);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: .85rem;
+  letter-spacing: .06em;
+}
 .hero h1 {
   font-family: "IBM Plex Mono", ui-monospace, monospace;
-  font-size: clamp(2rem, 5vw, 3.4rem);
-  line-height: 1.1;
-  margin: 0 0 .75rem;
-  letter-spacing: -.03em;
+  font-size: clamp(3rem, 9vw, 5.5rem);
+  line-height: 1;
+  margin: 0 0 .35rem;
+  letter-spacing: -.04em;
+  color: #fff;
 }
 .hero p.lede { max-width: 36rem; color: var(--muted); font-size: 1.15rem; }
+.hero p.lede strong { color: #fff; }
 .cta { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.6rem; }
 .btn {
   display: inline-block;

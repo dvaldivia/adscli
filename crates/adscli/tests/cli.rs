@@ -90,27 +90,27 @@ fn login_help_documents_pkce_and_device() {
         .stdout(predicate::str::contains("passkey"))
         .stdout(predicate::str::contains("ONE SHARED CLIENT"))
         .stdout(predicate::str::contains("Desktop app"))
-        .stdout(predicate::str::contains(
-            "REDACTED",
-        ))
         .stdout(predicate::str::contains("oauth_from_bundle"))
         .stdout(predicate::str::contains("ADSCLI_DEVELOPER_TOKEN"))
+        .stdout(predicate::str::contains("ADSCLI_BUNDLED_CLIENT_ID"))
         .stdout(predicate::str::contains("paste"));
 }
 
 #[test]
-fn default_oauth_client_is_bundled() {
+fn source_build_login_needs_client_unless_bundled() {
+    if adscli_config::has_bundled_oauth() {
+        return;
+    }
     ads()
         .env_remove("ADSCLI_CLIENT_ID")
         .env_remove("ADSCLI_CLIENT_SECRET")
         .env("HOME", "/tmp/adscli-empty-home-login")
         .env("ADSCLI_FORCE_FILE_STORE", "1")
-        .args(["auth", "status", "--json"])
+        .args(["login", "--json"])
         .assert()
         .failure()
         .code(4)
-        .stdout(predicate::str::contains("\"has_oauth_client\": true"))
-        .stdout(predicate::str::contains("\"oauth_from_bundle\": true"));
+        .stderr(predicate::str::contains("client_id"));
 }
 
 #[test]
