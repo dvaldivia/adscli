@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "adscli"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "adscli-api",
  "adscli-config",
@@ -21,7 +21,7 @@ dependencies = [
 
 [[package]]
 name = "adscli-api"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "adscli-config",
  "base64",
@@ -39,7 +39,7 @@ dependencies = [
 
 [[package]]
 name = "adscli-config"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "chrono",
  "dirs",
@@ -53,7 +53,7 @@ dependencies = [
 
 [[package]]
 name = "adscli-tui"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "adscli-api",
  "adscli-config",

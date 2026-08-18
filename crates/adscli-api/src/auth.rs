@@ -8,7 +8,7 @@
 //! Agents should set `ADSCLI_REFRESH_TOKEN` instead of running login.
 
 use std::collections::HashMap;
-use std::io::{IsTerminal, Read, Write};
+use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -432,18 +432,10 @@ pub fn wait_for_callback(
         .set_nonblocking(true)
         .map_err(|e| ApiError::transport(e.to_string()))?;
 
-    // Paste fallback: Chrome sometimes lands on the redirect URL without
-    // delivering a usable GET (HTTPS-first probe, empty socket, or the
-    // browser running on a different network namespace than the listener).
-    let (paste_tx, paste_rx) = std::sync::mpsc::channel::<String>();
-    if std::io::stdin().is_terminal() {
-        thread::spawn(move || {
-            let mut line = String::new();
-            if std::io::stdin().read_line(&mut line).is_ok() && !line.trim().is_empty() {
-                let _ = paste_tx.send(line);
-            }
-        });
-    }
+    // Paste fallback: the browser often cannot hit this listener (SSH /
+    // remote host / container / Chrome HTTPS-first probe). Keep reading
+    // stdin for the full 127.0.0.1 redirect URL until timeout.
+    let paste_rx = spawn_stdin_paste_reader();
 
     let start = Instant::now();
     loop {
@@ -451,12 +443,18 @@ pub fn wait_for_callback(
             return Err(ApiError::auth(
                 "timed out waiting for the browser to finish login (5 minutes)",
             )
-            .suggest("paste the full redirect URL (the 127.0.0.1 tab) into this terminal, or rerun with --device"));
+            .suggest("paste the full http://127.0.0.1:... redirect URL into this same login process, or rerun with --device"));
         }
         if let Ok(line) = paste_rx.try_recv() {
-            match callback_from_input(&line, expected_state) {
-                Ok(cb) => return Ok(cb),
-                Err(e) => eprintln!("could not read a code from that line: {e}"),
+            match callback_from_pasted(&line, expected_state) {
+                Ok(cb) => {
+                    eprintln!("got authorization code from pasted URL");
+                    return Ok(cb);
+                }
+                Err(e) => {
+                    eprintln!("could not read a code from that line: {e}");
+                    eprintln!("paste the full http://127.0.0.1:?state=...&code=... URL and press Enter");
+                }
             }
         }
         match listener.accept() {
@@ -491,7 +489,7 @@ pub fn wait_for_callback(
                     );
                     return Err(ApiError::auth(format!("oauth error: {err} {desc}")));
                 }
-                match callback_from_params(&params, expected_state) {
+                match callback_from_params(&params, expected_state, true) {
                     Ok(cb) => {
                         let _ = write_http(
                             &mut stream,
@@ -542,10 +540,43 @@ pub fn extract_oauth_params(input: &str) -> HashMap<String, String> {
         q
     } else if candidate.contains("code=") || candidate.contains("error=") {
         candidate
+    } else if looks_like_google_auth_code(candidate) {
+        let mut m = HashMap::new();
+        m.insert("code".into(), candidate.to_string());
+        return m;
     } else {
         return HashMap::new();
     };
     parse_query(query)
+}
+
+fn looks_like_google_auth_code(s: &str) -> bool {
+    // Installed-app codes look like `4/0A...` and never contain spaces.
+    s.starts_with("4/") && s.len() > 20 && !s.contains(char::is_whitespace)
+}
+
+fn spawn_stdin_paste_reader() -> std::sync::mpsc::Receiver<String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    thread::spawn(move || {
+        let stdin = std::io::stdin();
+        loop {
+            let mut line = String::new();
+            match stdin.read_line(&mut line) {
+                Ok(0) => break,
+                Ok(_) => {
+                    let t = line.trim();
+                    if t.is_empty() {
+                        continue;
+                    }
+                    if tx.send(t.to_string()).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    });
+    rx
 }
 
 /// Origin (`http://127.0.0.1:PORT`) from a pasted redirect URL, if present.
@@ -563,13 +594,21 @@ pub fn redirect_uri_from_url(input: &str) -> Option<String> {
     Some(format!("{scheme}://{hostport}"))
 }
 
-fn callback_from_input(input: &str, expected_state: Option<&str>) -> Result<Callback, ApiError> {
-    callback_from_params(&extract_oauth_params(input), expected_state)
+/// Parse a pasted redirect URL, `code=...` query, or a bare Google auth code.
+///
+/// State is verified when present. A bare code (no `state=`) is accepted
+/// because the user is pasting into the same login process.
+pub fn callback_from_pasted(
+    input: &str,
+    expected_state: Option<&str>,
+) -> Result<Callback, ApiError> {
+    callback_from_params(&extract_oauth_params(input), expected_state, false)
 }
 
 fn callback_from_params(
     params: &HashMap<String, String>,
     expected_state: Option<&str>,
+    state_required: bool,
 ) -> Result<Callback, ApiError> {
     if let Some(err) = params.get("error") {
         let desc = params
@@ -586,9 +625,10 @@ fn callback_from_params(
     if let Some(want) = expected_state {
         match params.get("state") {
             Some(got) if got == want => {}
+            None if !state_required => {}
             other => {
                 return Err(ApiError::auth(format!(
-                    "oauth state mismatch (got {other:?})"
+                    "oauth state mismatch (got {other:?}, expected this login's state)"
                 )));
             }
         }
@@ -744,6 +784,23 @@ mod tests {
             redirect_uri_from_url(url).as_deref(),
             Some("http://127.0.0.1:39121")
         );
+    }
+
+    #[test]
+    fn pasted_remote_redirect_url_yields_code() {
+        let url = "http://127.0.0.1:45673/?state=Q93eefa93tiHeCQhR6P0-g&iss=https://accounts.google.com&code=4/0ATsMZqBFDnurD9rsqCOTPmYkI96HNZdo_ILO8qWOYRun-gFwFnVu5UKqMzSg6M-PrDd0WQ&scope=https://www.googleapis.com/auth/adwords";
+        let cb = callback_from_pasted(url, Some("Q93eefa93tiHeCQhR6P0-g")).unwrap();
+        assert_eq!(
+            cb.code,
+            "4/0ATsMZqBFDnurD9rsqCOTPmYkI96HNZdo_ILO8qWOYRun-gFwFnVu5UKqMzSg6M-PrDd0WQ"
+        );
+        assert!(callback_from_pasted(url, Some("other-state")).is_err());
+        let bare = callback_from_pasted(
+            "4/0ATsMZqBFDnurD9rsqCOTPmYkI96HNZdo_ILO8qWOYRun-gFwFnVu5UKqMzSg6M-PrDd0WQ",
+            Some("Q93eefa93tiHeCQhR6P0-g"),
+        )
+        .unwrap();
+        assert_eq!(bare.code, cb.code);
     }
 
     #[test]

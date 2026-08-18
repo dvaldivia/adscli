@@ -94,7 +94,8 @@ fn login_help_documents_pkce_and_device() {
             "REDACTED",
         ))
         .stdout(predicate::str::contains("oauth_from_bundle"))
-        .stdout(predicate::str::contains("ADSCLI_DEVELOPER_TOKEN"));
+        .stdout(predicate::str::contains("ADSCLI_DEVELOPER_TOKEN"))
+        .stdout(predicate::str::contains("paste"));
 }
 
 #[test]

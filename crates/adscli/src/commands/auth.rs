@@ -166,7 +166,11 @@ fn desktop_login(
     let req = build_auth_request(&s.client_id, &uri)?;
     eprintln!("Waiting for Google to redirect to {uri}");
     eprintln!("{}", req.url);
-    eprintln!("If the browser tab stays blank, paste that 127.0.0.1 URL here and press Enter.");
+    eprintln!();
+    eprintln!("If this host is not your laptop (SSH, container, remote):");
+    eprintln!("  the browser will fail to open {uri}");
+    eprintln!("  copy the full 127.0.0.1 URL from the address bar and paste it here, then Enter.");
+    eprintln!("  (must be this same `adscli login` process — do not start a second one)");
     if !opts.print_url && !opts.no_browser {
         match open_browser(&req.url) {
             Ok(()) => eprintln!("opened the default browser"),

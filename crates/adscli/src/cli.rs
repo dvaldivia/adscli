@@ -251,9 +251,18 @@ WHAT HAPPENS:
      PKCE (S256), and a CSRF state parameter.
   2. The default browser opens (or the URL is printed).
   3. After you approve, Google redirects to the loopback listener.
+     If that address is not this machine (SSH, container, remote),
+     the tab fails. Copy the full http://127.0.0.1:.../?code=... URL
+     from the address bar and paste it into this same login process.
   4. adscli exchanges the code for an access token + refresh token.
   5. The refresh token is stored in the OS keychain when available,
      otherwise in credentials.json with mode 0600.
+
+  Paste into the waiting login — a second `adscli login` has a
+  different PKCE verifier and cannot redeem that code.
+  --device skips loopback entirely (Google device-code page).
+  --code accepts a pasted URL only when this process issued it
+  (prefer pasting into the waiting prompt).
 
 AGENTS:
   Do not call login from a script. Set ADSCLI_REFRESH_TOKEN and

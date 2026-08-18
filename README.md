@@ -28,7 +28,7 @@ brew install dvaldivia/tap/adscli
 
 ```sh
 # Pick your tarball — linux/x86_64, linux/arm64, darwin/x86_64, darwin/arm64
-VERSION=0.0.2
+VERSION=0.0.3
 OS=linux ARCH=x86_64
 curl -sSL -o adscli.tar.gz \
   "https://github.com/dvaldivia/adscli/releases/download/v${VERSION}/adscli_${OS}_${ARCH}.tar.gz"
@@ -41,7 +41,7 @@ install -m 0755 adscli /usr/local/bin/adscli
 **Cargo install (from source):**
 
 ```sh
-cargo install --git https://github.com/dvaldivia/adscli --tag v0.0.2 adscli
+cargo install --git https://github.com/dvaldivia/adscli --tag v0.0.3 adscli
 ```
 
 **Build from source:**
@@ -179,6 +179,8 @@ adscli login                    # opens the browser (PKCE + loopback)
 adscli auth status --json       # has_refresh_token + has_developer_token to call the API
 adscli config show --json       # same facts, plus oauth_from_bundle
 ```
+
+On SSH / a container / any host that is not your laptop, Google redirects to `127.0.0.1` on *your* machine, not the one running adscli. Leave `adscli login` waiting, copy the full `http://127.0.0.1:…/?state=…&code=…` URL from the browser address bar, paste it into that same process, and press Enter. A second `adscli login` cannot redeem that code (PKCE). `--device` is the other remote-friendly option.
 
 The refresh token is stored in the OS keychain, or in `~/.config/adscli/credentials.json` (mode `0600`) if the keychain is unavailable. Later commands refresh the access token silently.
 
