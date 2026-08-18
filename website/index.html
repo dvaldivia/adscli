@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>adscli — Google Ads CLI and TUI</title>
+  <meta name="description" content="Agent-first CLI and k9s-style TUI for the Google Ads API v25. Browse campaigns, asset groups, and assets. Self-describing --help.">
+  <link rel="canonical" href="https://adscli.dev/">
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <meta property="og:title" content="adscli">
+  <meta property="og:description" content="Agent-first CLI and TUI for the Google Ads API.">
+  <meta property="og:image" content="https://adscli.dev/assets/logo.jpg">
+  <meta property="og:url" content="https://adscli.dev/">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <nav>
+    <div class="wrap">
+      <a class="brand" href="/">
+        <img src="assets/logo.jpg" width="36" height="36" alt="adscli">
+        adscli
+      </a>
+      <div class="links">
+        <a href="#install">Install</a>
+        <a href="#auth">Auth</a>
+        <a href="https://github.com/dvaldivia/adscli">GitHub</a>
+        <a href="privacy.html">Privacy</a>
+      </div>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <h1>Google Ads,<br>from the terminal.</h1>
+      <p class="lede">
+        Agent-first CLI and a k9s-style TUI for the Google Ads API v25.
+        Browse campaigns, asset groups, and assets. Every command documents itself.
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="#install">Install</a>
+        <a class="btn" href="https://github.com/dvaldivia/adscli">Source</a>
+      </div>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <h2>Built for agents. Fine for humans.</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>Self-describing</h3>
+          <p><code>adscli --help</code> and <code>adscli schema --json</code> are the docs. No extra manual required.</p>
+        </article>
+        <article class="card">
+          <h3>Structured I/O</h3>
+          <p>Global <code>--json</code>. Errors on stderr. Exit codes 0–5. Mutations need <code>--yes</code>.</p>
+        </article>
+        <article class="card">
+          <h3>k9s-style TUI</h3>
+          <p>Drill campaigns → asset groups → assets. Filter, enable, pause. Bare <code>adscli</code> needs a TTY.</p>
+        </article>
+        <article class="card">
+          <h3>Browser SSO</h3>
+          <p><code>adscli login</code> is Desktop OAuth + PKCE. Every build ships the branded adscli client.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <div class="wrap">
+      <h2>Install</h2>
+      <p class="tiny">Homebrew (macOS and Linux)</p>
+<pre>brew install dvaldivia/tap/adscli</pre>
+      <p class="tiny">From a GitHub Release tarball</p>
+<pre>VERSION=0.0.2 OS=linux ARCH=x86_64
+curl -sSL -o adscli.tar.gz \
+  "https://github.com/dvaldivia/adscli/releases/download/v${VERSION}/adscli_${OS}_${ARCH}.tar.gz"
+tar -xzf adscli.tar.gz
+install -m 0755 adscli /usr/local/bin/adscli</pre>
+      <p class="tiny">From source</p>
+<pre>cargo install --git https://github.com/dvaldivia/adscli adscli</pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>Try it</h2>
+<pre>adscli version --json
+adscli schema --json
+adscli login
+adscli customers list --json
+adscli campaigns list --json --limit 20</pre>
+    </div>
+  </section>
+
+  <section id="auth">
+    <div class="wrap prose">
+      <h2>Auth</h2>
+      <p>
+        Every adscli binary ships a shared Desktop OAuth client. <code>adscli login</code>
+        uses it unless you set <code>ADSCLI_CLIENT_ID</code> / <code>ADSCLI_CLIENT_SECRET</code>
+        (or the same keys in a config file). You still click Allow as yourself. The Desktop
+        secret is public-by-design — extracting it does not open anyone’s Ads account.
+      </p>
+      <p>
+        The Google Ads <strong>developer token is not shipped</strong>. Set
+        <code>ADSCLI_DEVELOPER_TOKEN</code> before API calls. Check
+        <code>adscli auth status --json</code> for <code>has_oauth_client</code>,
+        <code>oauth_from_bundle</code>, and <code>has_developer_token</code>.
+      </p>
+      <p>Full behavior: <code>adscli login --help</code> and the README.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="wrap">
+      <h2>TUI keys</h2>
+      <table>
+        <tr><th>Key</th><th>Action</th></tr>
+        <tr><td><kbd>j</kbd> <kbd>k</kbd></td><td>move</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>drill down</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>back / quit</td></tr>
+        <tr><td><kbd>/</kbd></td><td>filter</td></tr>
+        <tr><td><kbd>e</kbd> / <kbd>p</kbd></td><td>enable / pause</td></tr>
+        <tr><td><kbd>?</kbd></td><td>help</td></tr>
+      </table>
+    </div>
+  </section>
+
+  <footer>
+    <div class="wrap">
+      <span>Apache-2.0 · <a href="https://github.com/dvaldivia/adscli">dvaldivia/adscli</a></span>
+      <span>
+        <a href="privacy.html">Privacy</a>
+        · <a href="support.html">Support</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

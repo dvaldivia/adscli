@@ -5,7 +5,8 @@ use adscli_api::ApiError;
 use adscli_api::auth::AuthStatus;
 use adscli_api::auth::{
     apply_tokens, bind_localhost, build_auth_request, clear_stored_tokens, exchange_code,
-    exchange_code_pkce, open_browser, poll_device_token, request_device_code, wait_for_callback,
+    exchange_code_pkce, extract_oauth_params, open_browser, poll_device_token,
+    redirect_uri_from_url, request_device_code, wait_for_callback,
 };
 
 use crate::cli::{AuthCmd, Cli, LoginOpts};
@@ -32,11 +33,12 @@ fn status(cli: &Cli) -> ExitCode {
         }
     } else {
         println!(
-            "authenticated={} developer_token={} refresh_token={} token_store={} customer_id={}",
+            "authenticated={} developer_token={} refresh_token={} token_store={} oauth_from_bundle={} customer_id={}",
             st.authenticated,
             st.has_developer_token,
             st.has_refresh_token,
             st.token_store.as_deref().unwrap_or("-"),
+            st.oauth_from_bundle,
             if st.customer_id.is_empty() {
                 "-"
             } else {
@@ -103,16 +105,23 @@ pub fn login(cli: &Cli, opts: &LoginOpts) -> ExitCode {
     let result = if opts.device {
         device_login(&s, opts)
     } else if let Some(code) = opts.code.as_deref() {
-        let uri = match opts.redirect_uri.as_deref() {
-            Some(u) => u,
-            None => {
-                return output::emit_error(
-                    cli.json,
-                    &ApiError::usage("--redirect-uri is required with --code"),
-                );
-            }
+        let extracted = extract_oauth_params(code)
+            .get("code")
+            .cloned()
+            .unwrap_or_else(|| code.to_string());
+        let uri = opts
+            .redirect_uri
+            .clone()
+            .or_else(|| redirect_uri_from_url(code));
+        let Some(uri) = uri else {
+            return output::emit_error(
+                cli.json,
+                &ApiError::usage(
+                    "--redirect-uri is required with --code unless you paste the full http://127.0.0.1:... URL",
+                ),
+            );
         };
-        exchange_code(&s.client_id, &s.client_secret, uri, code)
+        exchange_code(&s.client_id, &s.client_secret, &uri, &extracted)
     } else {
         desktop_login(&s, opts)
     };
@@ -157,6 +166,7 @@ fn desktop_login(
     let req = build_auth_request(&s.client_id, &uri)?;
     eprintln!("Waiting for Google to redirect to {uri}");
     eprintln!("{}", req.url);
+    eprintln!("If the browser tab stays blank, paste that 127.0.0.1 URL here and press Enter.");
     if !opts.print_url && !opts.no_browser {
         match open_browser(&req.url) {
             Ok(()) => eprintln!("opened the default browser"),

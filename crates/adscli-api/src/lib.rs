@@ -13,7 +13,8 @@ pub mod query;
 
 pub use auth::{
     AuthRequest, AuthStatus, DeviceCode, Pkce, TokenSet, build_auth_request, exchange_code,
-    exchange_code_pkce, login_url, refresh_access_token,
+    exchange_code_pkce, extract_oauth_params, login_url, redirect_uri_from_url,
+    refresh_access_token,
 };
 pub use client::{
     AdsClient, CreateAsset, CreateAssetGroup, CreateCampaign, DryRun, HttpRequest, HttpResponse,

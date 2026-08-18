@@ -1,0 +1,54 @@
+[
+  {
+    "op": "add",
+    "path": "/spec/listeners/-",
+    "value": {
+      "name": "adscli-http",
+      "hostname": "adscli.dev",
+      "port": 80,
+      "protocol": "HTTP",
+      "allowedRoutes": {"namespaces": {"from": "All"}}
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/listeners/-",
+    "value": {
+      "name": "adscli-https",
+      "hostname": "adscli.dev",
+      "port": 443,
+      "protocol": "HTTPS",
+      "allowedRoutes": {"namespaces": {"from": "All"}},
+      "tls": {
+        "mode": "Terminate",
+        "certificateRefs": [{"group": "", "kind": "Secret", "name": "adscli-tls"}]
+      }
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/listeners/-",
+    "value": {
+      "name": "adscli-www-http",
+      "hostname": "www.adscli.dev",
+      "port": 80,
+      "protocol": "HTTP",
+      "allowedRoutes": {"namespaces": {"from": "All"}}
+    }
+  },
+  {
+    "op": "add",
+    "path": "/spec/listeners/-",
+    "value": {
+      "name": "adscli-www-https",
+      "hostname": "www.adscli.dev",
+      "port": 443,
+      "protocol": "HTTPS",
+      "allowedRoutes": {"namespaces": {"from": "All"}},
+      "tls": {
+        "mode": "Terminate",
+        "certificateRefs": [{"group": "", "kind": "Secret", "name": "adscli-tls"}]
+      }
+    }
+  }
+]

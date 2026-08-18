@@ -26,11 +26,12 @@ INTERACTIVE TUI (default, requires a TTY):
   like k9s. In a pipe or script this exits immediately and tells you
   which subcommand to use instead.
 
-CONFIGURATION (flag > env > file):
+CONFIGURATION (flag > env > file > built-in Desktop client):
   ADSCLI_DEVELOPER_TOKEN   required for every API call
   ADSCLI_CUSTOMER_ID       10-digit account (dashes ok)
   ADSCLI_LOGIN_CUSTOMER_ID MCC / manager account
-  ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET / ADSCLI_REFRESH_TOKEN
+  ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET   optional; override the shared client
+  ADSCLI_REFRESH_TOKEN
   Config file: --config, ./.adscli.yaml, ~/.config/adscli/config.yaml
 
 SSO LOGIN:
@@ -74,11 +75,11 @@ pub struct Cli {
     #[arg(long, global = true, env = "ADSCLI_DEVELOPER_TOKEN")]
     pub developer_token: Option<String>,
 
-    /// OAuth client id (Desktop app)
+    /// OAuth client id (Desktop app). Defaults to the shared adscli client.
     #[arg(long, global = true, env = "ADSCLI_CLIENT_ID")]
     pub client_id: Option<String>,
 
-    /// OAuth client secret
+    /// OAuth client secret. Defaults to the shared adscli Desktop secret.
     #[arg(long, global = true, env = "ADSCLI_CLIENT_SECRET")]
     pub client_secret: Option<String>,
 
@@ -198,37 +199,51 @@ pub enum Command {
 const LOGIN_ABOUT: &str = "\
 Sign in to Google Ads with a browser (OAuth 2.0 Desktop / Installed app).
 
-BRING YOUR OWN CLIENT (required):
-  adscli does not ship a universal / shared OAuth client id. Google treats
-  the adwords scope as sensitive, so every user (or company) creates their
-  own Desktop OAuth client in a Google Cloud project they control, plus a
-  developer token from the Google Ads API Center. There is no shared
-  client you can copy from this binary.
+DEFAULT CLIENT (compiled into every binary):
+  client_id     REDACTED
+  client_secret REDACTED
 
-  1. Create or pick a Google Cloud project:
-     https://console.cloud.google.com/
-  2. Enable the Google Ads API on that project:
-     https://console.cloud.google.com/apis/library/googleads.googleapis.com
-  3. Configure the OAuth consent screen (External is fine for yourself;
-     add your Google account as a test user while the app is unverified).
-     Add scope: https://www.googleapis.com/auth/adwords
-  4. Create credentials → OAuth client ID → application type Desktop app.
-     Download the JSON. You need client_id and client_secret.
-     Desktop clients already allow http://127.0.0.1 as a redirect; you
-     do not register a port.
-  5. Apply for a developer token in Google Ads (Admin → API Center).
-     Login itself does not send the token; every later API call does.
-     https://developers.google.com/google-ads/api/docs/get-started/dev-token
-  6. Export the values (or put them in .adscli.yaml) and run login:
+  You do not need to export those. adscli login uses them unless
+  overridden. The developer token is NOT shipped — set
+  ADSCLI_DEVELOPER_TOKEN (or config.yaml) for API calls.
 
-       export ADSCLI_CLIENT_ID=....apps.googleusercontent.com
-       export ADSCLI_CLIENT_SECRET=...
-       export ADSCLI_DEVELOPER_TOKEN=...
-       adscli login
+  Resolution, highest wins:
+    --client-id / --client-secret
+    ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET
+    client_id / client_secret in config.yaml or credentials.json
+    the compiled defaults above
 
-  If Google shows an unverified-app warning, use Advanced → Go to
-  <project> (unsafe). New refresh tokens (as of August 2026) may also
-  ask you to create a passkey. Existing refresh tokens keep working.
+  When the defaults win: `adscli auth status --json` and
+  `adscli config show --json` report oauth_from_bundle=true and
+  has_oauth_client=true. Secrets are never printed.
+
+ONE SHARED CLIENT (yes, branding is for this):
+  The Cloud OAuth consent-screen branding (app name, logo, homepage
+  https://adscli.dev, privacy https://adscli.dev/privacy.html) is
+  what users see when they click Allow. Every adscli user shares
+  this Desktop client. They still sign in as themselves; they do
+  not create their own Cloud project.
+
+  Until Google verifies the app, only listed test users can finish
+  the consent screen. Unverified users see Advanced → Go to <app>.
+
+  Desktop client_secret is public-by-design (it ships in the
+  binary; Google assumes installed apps cannot keep secrets).
+  Extracting it does not grant anyone's Ads account — a human
+  must still click Allow. PKCE still protects the loopback code
+  exchange. A leaked developer token is worse: it is the app's
+  API permit and quota.
+
+BRING YOUR OWN CLIENT (a different Cloud project):
+  1. Google Cloud project + enable Google Ads API
+  2. OAuth consent screen, scope https://www.googleapis.com/auth/adwords
+  3. Credentials → OAuth client ID → Desktop app
+  4. Google Ads Admin → API Center → developer token
+  5. export ADSCLI_CLIENT_ID ADSCLI_CLIENT_SECRET ADSCLI_DEVELOPER_TOKEN
+     adscli login
+
+  Desktop clients already allow http://127.0.0.1; do not register a port.
+  New refresh tokens (as of August 2026) may ask for a passkey.
 
 WHAT HAPPENS:
   1. adscli binds http://127.0.0.1 (loopback) and builds a consent URL
@@ -241,10 +256,11 @@ WHAT HAPPENS:
      otherwise in credentials.json with mode 0600.
 
 AGENTS:
-  Do not call login from a script. Set ADSCLI_REFRESH_TOKEN (and the
-  client id/secret) instead. Use `adscli auth status --json` to inspect
-  whether credentials are present. Use --device on a machine with no
-  browser; use --code to exchange a code obtained elsewhere.
+  Do not call login from a script. Set ADSCLI_REFRESH_TOKEN and
+  ADSCLI_DEVELOPER_TOKEN (client id/secret only to override the
+  built-in client). Use `adscli auth status --json` to inspect
+  whether credentials are present. Use --device on a machine with
+  no browser; use --code to exchange a code obtained elsewhere.
 ";
 
 #[derive(Debug, Clone, clap::Args)]
@@ -280,7 +296,7 @@ pub enum AuthCmd {
         #[command(flatten)]
         opts: LoginOpts,
     },
-    /// Show whether tokens and developer token are configured (no secrets)
+    /// Show whether tokens, developer token, and the bundled OAuth client are configured (no secrets)
     Status,
     /// Delete the cached credentials file and keychain entry
     Logout,
@@ -290,7 +306,7 @@ pub enum AuthCmd {
 pub enum ConfigCmd {
     /// Print the config and credentials file paths
     Path,
-    /// Print resolved settings with secrets redacted
+    /// Print resolved settings with secrets redacted (`oauth_from_bundle` is true when the built-in Desktop client is in use)
     Show,
 }
 

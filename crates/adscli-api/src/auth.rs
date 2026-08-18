@@ -8,7 +8,7 @@
 //! Agents should set `ADSCLI_REFRESH_TOKEN` instead of running login.
 
 use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{IsTerminal, Read, Write};
 use std::net::TcpListener;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -66,6 +66,8 @@ pub struct AuthStatus {
     pub has_access_token: bool,
     pub has_developer_token: bool,
     pub has_oauth_client: bool,
+    pub oauth_from_bundle: bool,
+    pub developer_token_from_bundle: bool,
     pub customer_id: String,
     pub login_customer_id: String,
     pub api_version: String,
@@ -83,6 +85,8 @@ impl AuthStatus {
             has_access_token: s.has_access_token(),
             has_developer_token: s.has_developer_token(),
             has_oauth_client: s.has_oauth_client(),
+            oauth_from_bundle: s.oauth_from_bundle,
+            developer_token_from_bundle: s.developer_token_from_bundle,
             customer_id: s.customer_id.clone(),
             login_customer_id: s.login_customer_id.clone(),
             api_version: s.api_version.clone(),
@@ -427,25 +431,47 @@ pub fn wait_for_callback(
     listener
         .set_nonblocking(true)
         .map_err(|e| ApiError::transport(e.to_string()))?;
+
+    // Paste fallback: Chrome sometimes lands on the redirect URL without
+    // delivering a usable GET (HTTPS-first probe, empty socket, or the
+    // browser running on a different network namespace than the listener).
+    let (paste_tx, paste_rx) = std::sync::mpsc::channel::<String>();
+    if std::io::stdin().is_terminal() {
+        thread::spawn(move || {
+            let mut line = String::new();
+            if std::io::stdin().read_line(&mut line).is_ok() && !line.trim().is_empty() {
+                let _ = paste_tx.send(line);
+            }
+        });
+    }
+
     let start = Instant::now();
     loop {
         if start.elapsed() > LOGIN_TIMEOUT {
             return Err(ApiError::auth(
                 "timed out waiting for the browser to finish login (5 minutes)",
-            ));
+            )
+            .suggest("paste the full redirect URL (the 127.0.0.1 tab) into this terminal, or rerun with --device"));
+        }
+        if let Ok(line) = paste_rx.try_recv() {
+            match callback_from_input(&line, expected_state) {
+                Ok(cb) => return Ok(cb),
+                Err(e) => eprintln!("could not read a code from that line: {e}"),
+            }
         }
         match listener.accept() {
             Ok((mut stream, _)) => {
-                let mut buf = [0u8; 8192];
                 stream
                     .set_nonblocking(false)
                     .map_err(|e| ApiError::transport(e.to_string()))?;
                 let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
-                let n = stream.read(&mut buf).unwrap_or(0);
-                let req = String::from_utf8_lossy(&buf[..n]);
-                let first = req.lines().next().unwrap_or("");
-                let params = parse_request_query(first);
-                if is_noise_request(first) {
+                let req = match read_http_head(&mut stream) {
+                    Some(r) => r,
+                    None => continue,
+                };
+                let params = extract_oauth_params(&req);
+                if params.get("code").is_none() && params.get("error").is_none() {
+                    // Empty sockets, TLS ClientHellos, favicon, `/`.
                     let _ = write_http(&mut stream, 204, "text/plain; charset=utf-8", "");
                     continue;
                 }
@@ -465,46 +491,30 @@ pub fn wait_for_callback(
                     );
                     return Err(ApiError::auth(format!("oauth error: {err} {desc}")));
                 }
-                let Some(code) = params.get("code").cloned() else {
-                    let _ = write_http(
-                        &mut stream,
-                        400,
-                        "text/html; charset=utf-8",
-                        &html_page(
-                            "adscli login failed",
-                            "Redirect was missing the authorization code.",
-                        ),
-                    );
-                    return Err(ApiError::auth(format!(
-                        "oauth callback missing code: {first}"
-                    )));
-                };
-                if let Some(want) = expected_state {
-                    match params.get("state") {
-                        Some(got) if got == want => {}
-                        other => {
-                            let _ = write_http(
-                                &mut stream,
-                                400,
-                                "text/html; charset=utf-8",
-                                &html_page("adscli login failed", "OAuth state mismatch."),
-                            );
-                            return Err(ApiError::auth(format!(
-                                "oauth state mismatch (got {other:?})"
-                            )));
-                        }
+                match callback_from_params(&params, expected_state) {
+                    Ok(cb) => {
+                        let _ = write_http(
+                            &mut stream,
+                            200,
+                            "text/html; charset=utf-8",
+                            &html_page(
+                                "adscli is signed in",
+                                "You can close this tab and return to the terminal.",
+                            ),
+                        );
+                        return Ok(cb);
+                    }
+                    Err(e) => {
+                        let _ = write_http(
+                            &mut stream,
+                            400,
+                            "text/html; charset=utf-8",
+                            &html_page("adscli login failed", &e.message),
+                        );
+                        eprintln!("ignoring callback: {e}");
+                        continue;
                     }
                 }
-                let _ = write_http(
-                    &mut stream,
-                    200,
-                    "text/html; charset=utf-8",
-                    &html_page(
-                        "adscli is signed in",
-                        "You can close this tab and return to the terminal.",
-                    ),
-                );
-                return Ok(Callback { code });
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
                 thread::sleep(Duration::from_millis(50));
@@ -516,27 +526,111 @@ pub fn wait_for_callback(
     }
 }
 
+/// Pull `code` / `state` from an HTTP request, a full redirect URL, or a
+/// pasted `code=` query. Used by the listener and the stdin fallback.
+pub fn extract_oauth_params(input: &str) -> HashMap<String, String> {
+    let s = input.trim();
+    if s.is_empty() {
+        return HashMap::new();
+    }
+    let candidate = if let Some(rest) = s.strip_prefix("GET ").or_else(|| s.strip_prefix("get ")) {
+        rest.split_whitespace().next().unwrap_or(rest)
+    } else {
+        s.split_whitespace().next().unwrap_or(s)
+    };
+    let query = if let Some((_, q)) = candidate.split_once('?') {
+        q
+    } else if candidate.contains("code=") || candidate.contains("error=") {
+        candidate
+    } else {
+        return HashMap::new();
+    };
+    parse_query(query)
+}
+
+/// Origin (`http://127.0.0.1:PORT`) from a pasted redirect URL, if present.
+pub fn redirect_uri_from_url(input: &str) -> Option<String> {
+    let s = input.trim();
+    let rest = s
+        .strip_prefix("http://")
+        .or_else(|| s.strip_prefix("https://"))?;
+    let hostport = rest.split(['/', '?']).next().filter(|h| !h.is_empty())?;
+    let scheme = if s.starts_with("https://") {
+        "https"
+    } else {
+        "http"
+    };
+    Some(format!("{scheme}://{hostport}"))
+}
+
+fn callback_from_input(input: &str, expected_state: Option<&str>) -> Result<Callback, ApiError> {
+    callback_from_params(&extract_oauth_params(input), expected_state)
+}
+
+fn callback_from_params(
+    params: &HashMap<String, String>,
+    expected_state: Option<&str>,
+) -> Result<Callback, ApiError> {
+    if let Some(err) = params.get("error") {
+        let desc = params
+            .get("error_description")
+            .map(|s| s.as_str())
+            .unwrap_or("");
+        return Err(ApiError::auth(format!("oauth error: {err} {desc}")));
+    }
+    let code = params
+        .get("code")
+        .cloned()
+        .filter(|c| !c.is_empty())
+        .ok_or_else(|| ApiError::auth("oauth callback missing code"))?;
+    if let Some(want) = expected_state {
+        match params.get("state") {
+            Some(got) if got == want => {}
+            other => {
+                return Err(ApiError::auth(format!(
+                    "oauth state mismatch (got {other:?})"
+                )));
+            }
+        }
+    }
+    Ok(Callback { code })
+}
+
+fn read_http_head(stream: &mut impl Read) -> Option<String> {
+    let mut buf = Vec::new();
+    let mut tmp = [0u8; 1024];
+    loop {
+        match stream.read(&mut tmp) {
+            Ok(0) => break,
+            Ok(n) => {
+                buf.extend_from_slice(&tmp[..n]);
+                if buf.windows(4).any(|w| w == b"\r\n\r\n")
+                    || buf.windows(2).any(|w| w == b"\n\n")
+                    || buf.len() >= 8192
+                {
+                    break;
+                }
+            }
+            Err(_) => break,
+        }
+    }
+    if buf.is_empty() || buf[0] < 0x20 {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
 pub fn open_browser(url: &str) -> Result<(), ApiError> {
     webbrowser::open(url).map_err(|e| ApiError::transport(format!("open browser: {e}")))
 }
 
-fn is_noise_request(request_line: &str) -> bool {
-    let path = request_line.split_whitespace().nth(1).unwrap_or("");
-    path.starts_with("/favicon")
-        || path == "/"
-        || path.starts_with("/?") && !path.contains("code=") && !path.contains("error=")
-}
-
-fn parse_request_query(request_line: &str) -> HashMap<String, String> {
+fn parse_query(query: &str) -> HashMap<String, String> {
     let mut out = HashMap::new();
-    let path = match request_line.split_whitespace().nth(1) {
-        Some(p) => p,
-        None => return out,
-    };
-    let Some((_, q)) = path.split_once('?') else {
-        return out;
-    };
-    for pair in q.split('&') {
+    let query = query.split('#').next().unwrap_or(query);
+    for pair in query.split('&') {
+        if pair.is_empty() {
+            continue;
+        }
         let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
         out.insert(urldec(k), urldec(v));
     }
@@ -623,15 +717,33 @@ mod tests {
 
     #[test]
     fn parses_callback() {
-        let q = parse_request_query("GET /?code=abc%2Fdef&state=s1&scope=x HTTP/1.1");
+        let q = extract_oauth_params("GET /?code=abc%2Fdef&state=s1&scope=x HTTP/1.1");
         assert_eq!(q.get("code").map(String::as_str), Some("abc/def"));
         assert_eq!(q.get("state").map(String::as_str), Some("s1"));
     }
 
     #[test]
     fn parses_oauth_error() {
-        let q = parse_request_query("GET /?error=access_denied&error_description=nope HTTP/1.1");
+        let q = extract_oauth_params("GET /?error=access_denied&error_description=nope HTTP/1.1");
         assert_eq!(q.get("error").map(String::as_str), Some("access_denied"));
+    }
+
+    #[test]
+    fn parses_google_redirect_with_iss() {
+        let url = "http://127.0.0.1:39121/?state=5sbT1CZY9uQLEJGvq6EdBw&iss=https://accounts.google.com&code=4/0ATsMZqCbwXbeUC4_sRf4aclulBjGEC7MW9Z4J7854JGb_FahEJDqKsu1RxrvGGCn3-bkIQ&scope=https://www.googleapis.com/auth/adwords";
+        let q = extract_oauth_params(url);
+        assert_eq!(
+            q.get("code").map(String::as_str),
+            Some("4/0ATsMZqCbwXbeUC4_sRf4aclulBjGEC7MW9Z4J7854JGb_FahEJDqKsu1RxrvGGCn3-bkIQ")
+        );
+        assert_eq!(
+            q.get("state").map(String::as_str),
+            Some("5sbT1CZY9uQLEJGvq6EdBw")
+        );
+        assert_eq!(
+            redirect_uri_from_url(url).as_deref(),
+            Some("http://127.0.0.1:39121")
+        );
     }
 
     #[test]
@@ -657,7 +769,7 @@ mod tests {
 
     #[test]
     fn favicon_is_noise() {
-        assert!(is_noise_request("GET /favicon.ico HTTP/1.1"));
-        assert!(!is_noise_request("GET /?code=abc HTTP/1.1"));
+        assert!(extract_oauth_params("GET /favicon.ico HTTP/1.1").is_empty());
+        assert!(extract_oauth_params("GET /?code=abc HTTP/1.1").contains_key("code"));
     }
 }

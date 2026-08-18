@@ -1,0 +1,17 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: adscli-tls
+  namespace: shared
+spec:
+  secretName: adscli-tls
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: cluster-issuer
+  dnsNames:
+    - adscli.dev
+    - www.adscli.dev
+  usages:
+    - digital signature
+    - key encipherment

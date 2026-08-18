@@ -3,11 +3,16 @@
 //! Resolution order (highest wins): CLI flags → environment → config file
 //! → built-in defaults. Secrets never appear in `Display` / `show` output.
 
+mod bundled;
 mod file;
 mod ids;
 mod paths;
 mod store;
 
+pub use bundled::{
+    DEFAULT_CLIENT_ID, DEFAULT_CLIENT_SECRET, bundled_client_id, bundled_client_secret,
+    bundled_developer_token, has_bundled_oauth,
+};
 pub use file::{ConfigFile, CredentialsFile, redacted_map};
 pub use ids::{extract_resource_id, normalize_customer_id, resource_name, strip_customer_prefix};
 pub use paths::{ConfigPaths, config_paths};
@@ -68,6 +73,10 @@ pub struct Settings {
     pub skip_token_refresh: bool,
     /// Where the refresh token was last read from or written to.
     pub token_store: Option<SecretBackend>,
+    /// True when client_id/secret came from the publisher-bundled defaults.
+    pub oauth_from_bundle: bool,
+    /// True when developer_token came from the publisher-bundled default.
+    pub developer_token_from_bundle: bool,
     pub config_path: Option<PathBuf>,
     pub credentials_path: PathBuf,
 }
@@ -87,6 +96,8 @@ impl Default for Settings {
             access_token_expiry: None,
             skip_token_refresh: false,
             token_store: None,
+            oauth_from_bundle: false,
+            developer_token_from_bundle: false,
             config_path: None,
             credentials_path: ConfigPaths::default().credentials,
         }
@@ -143,7 +154,10 @@ pub fn load(overrides: &CliOverrides) -> Result<Settings, ConfigError> {
         ..Settings::default()
     };
 
-    // File (lowest, after defaults)
+    // Publisher-hosted client (lowest). Overridden by file/env/flags.
+    apply_bundled(&mut s);
+
+    // File
     apply_file(&mut s, &file);
     apply_creds(&mut s, &creds);
     apply_keyring(&mut s);
@@ -181,12 +195,32 @@ fn normalize_opt(s: &str) -> Option<String> {
     }
 }
 
+fn apply_bundled(s: &mut Settings) {
+    if let Some(id) = bundled_client_id() {
+        s.client_id = id.to_string();
+        s.oauth_from_bundle = true;
+    }
+    if let Some(secret) = bundled_client_secret() {
+        s.client_secret = secret.to_string();
+        s.oauth_from_bundle = s.oauth_from_bundle || bundled_client_id().is_some();
+    }
+    if let Some(tok) = bundled_developer_token() {
+        s.developer_token = tok.to_string();
+        s.developer_token_from_bundle = true;
+    }
+}
+
 fn apply_file(s: &mut Settings, f: &ConfigFile) {
-    set_if(&mut s.developer_token, f.developer_token.as_deref());
+    if set_if(&mut s.developer_token, f.developer_token.as_deref()) {
+        s.developer_token_from_bundle = false;
+    }
     set_if(&mut s.customer_id, f.customer_id.as_deref());
     set_if(&mut s.login_customer_id, f.login_customer_id.as_deref());
-    set_if(&mut s.client_id, f.client_id.as_deref());
-    set_if(&mut s.client_secret, f.client_secret.as_deref());
+    if set_if(&mut s.client_id, f.client_id.as_deref())
+        | set_if(&mut s.client_secret, f.client_secret.as_deref())
+    {
+        s.oauth_from_bundle = false;
+    }
     set_if(&mut s.refresh_token, f.refresh_token.as_deref());
     set_if(&mut s.api_base, f.api_base.as_deref());
     if let Some(v) = f.api_version.as_deref()
@@ -207,8 +241,11 @@ fn apply_creds(s: &mut Settings, c: &CredentialsFile) {
         s.token_store = Some(SecretBackend::File);
     }
     set_if(&mut s.access_token, c.access_token.as_deref());
-    set_if(&mut s.client_id, c.client_id.as_deref());
-    set_if(&mut s.client_secret, c.client_secret.as_deref());
+    if set_if(&mut s.client_id, c.client_id.as_deref())
+        | set_if(&mut s.client_secret, c.client_secret.as_deref())
+    {
+        s.oauth_from_bundle = false;
+    }
     s.access_token_expiry = c.expiry;
 }
 
@@ -223,10 +260,12 @@ fn apply_keyring(s: &mut Settings) {
 }
 
 fn apply_env(s: &mut Settings) {
-    set_if(
+    if set_if(
         &mut s.developer_token,
         std::env::var(ENV_DEVELOPER_TOKEN).ok().as_deref(),
-    );
+    ) {
+        s.developer_token_from_bundle = false;
+    }
     set_if(
         &mut s.customer_id,
         std::env::var(ENV_CUSTOMER_ID).ok().as_deref(),
@@ -235,14 +274,15 @@ fn apply_env(s: &mut Settings) {
         &mut s.login_customer_id,
         std::env::var(ENV_LOGIN_CUSTOMER_ID).ok().as_deref(),
     );
-    set_if(
+    if set_if(
         &mut s.client_id,
         std::env::var(ENV_CLIENT_ID).ok().as_deref(),
-    );
-    set_if(
+    ) | set_if(
         &mut s.client_secret,
         std::env::var(ENV_CLIENT_SECRET).ok().as_deref(),
-    );
+    ) {
+        s.oauth_from_bundle = false;
+    }
     set_if(
         &mut s.refresh_token,
         std::env::var(ENV_REFRESH_TOKEN).ok().as_deref(),
@@ -259,22 +299,29 @@ fn apply_env(s: &mut Settings) {
 
 fn apply_overrides(s: &mut Settings, o: &CliOverrides) {
     set_if(&mut s.api_base, o.api_base.as_deref());
-    set_if(&mut s.developer_token, o.developer_token.as_deref());
+    if set_if(&mut s.developer_token, o.developer_token.as_deref()) {
+        s.developer_token_from_bundle = false;
+    }
     set_if(&mut s.customer_id, o.customer_id.as_deref());
     set_if(&mut s.login_customer_id, o.login_customer_id.as_deref());
-    set_if(&mut s.client_id, o.client_id.as_deref());
-    set_if(&mut s.client_secret, o.client_secret.as_deref());
+    if set_if(&mut s.client_id, o.client_id.as_deref())
+        | set_if(&mut s.client_secret, o.client_secret.as_deref())
+    {
+        s.oauth_from_bundle = false;
+    }
     set_if(&mut s.refresh_token, o.refresh_token.as_deref());
     set_if(&mut s.access_token, o.access_token.as_deref());
 }
 
-fn set_if(dest: &mut String, src: Option<&str>) {
+fn set_if(dest: &mut String, src: Option<&str>) -> bool {
     if let Some(v) = src {
         let t = v.trim();
         if !t.is_empty() {
             *dest = t.to_string();
+            return true;
         }
     }
+    false
 }
 
 pub fn env_truthy(name: &str) -> bool {

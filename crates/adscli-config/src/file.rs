@@ -127,6 +127,18 @@ pub fn redacted_map(s: &super::Settings) -> BTreeMap<&'static str, serde_json::V
         serde_json::Value::Bool(s.has_refresh_token()),
     );
     m.insert(
+        "oauth_from_bundle",
+        serde_json::Value::Bool(s.oauth_from_bundle),
+    );
+    m.insert(
+        "developer_token_from_bundle",
+        serde_json::Value::Bool(s.developer_token_from_bundle),
+    );
+    m.insert(
+        "has_bundled_oauth",
+        serde_json::Value::Bool(crate::has_bundled_oauth()),
+    );
+    m.insert(
         "skip_token_refresh",
         serde_json::Value::Bool(s.skip_token_refresh),
     );

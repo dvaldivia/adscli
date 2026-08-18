@@ -1,0 +1,138 @@
+:root {
+  --bg: #0e1017;
+  --panel: #161822;
+  --ink: #c0caf5;
+  --muted: #7a83a8;
+  --line: #2a3044;
+  --cyan: #7dcfff;
+  --gold: #e0af68;
+  --green: #9ece6a;
+  --pink: #f7768e;
+  --max: 1080px;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--bg);
+  font: 16px/1.55 "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap { max-width: var(--max); margin: 0 auto; padding: 0 1.25rem; }
+
+nav {
+  position: sticky; top: 0; z-index: 10;
+  backdrop-filter: blur(12px);
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border-bottom: 1px solid var(--line);
+}
+nav .wrap {
+  display: flex; align-items: center; gap: 1.25rem;
+  height: 64px;
+}
+nav .brand { display: flex; align-items: center; gap: .65rem; color: var(--ink); font-weight: 600; }
+nav .brand img { width: 36px; height: 36px; border-radius: 8px; }
+nav .links { margin-left: auto; display: flex; gap: 1rem; font-size: .92rem; }
+nav .links a { color: var(--muted); }
+nav .links a:hover { color: var(--ink); text-decoration: none; }
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  min-height: 420px;
+  display: flex; align-items: center;
+}
+.hero::before {
+  content: "";
+  position: absolute; inset: 0;
+  background:
+    linear-gradient(90deg, rgba(14,16,23,.92) 0%, rgba(14,16,23,.55) 48%, rgba(14,16,23,.2) 100%),
+    url("assets/banner.jpg") right center / cover no-repeat;
+}
+.hero .wrap { position: relative; padding: 4.5rem 1.25rem; }
+.hero h1 {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: clamp(2rem, 5vw, 3.4rem);
+  line-height: 1.1;
+  margin: 0 0 .75rem;
+  letter-spacing: -.03em;
+}
+.hero p.lede { max-width: 36rem; color: var(--muted); font-size: 1.15rem; }
+.cta { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 1.6rem; }
+.btn {
+  display: inline-block;
+  padding: .65rem 1rem;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink);
+  font-weight: 600;
+}
+.btn:hover { text-decoration: none; border-color: var(--cyan); color: var(--cyan); }
+.btn.primary { background: var(--cyan); color: #081018; border-color: var(--cyan); }
+.btn.primary:hover { filter: brightness(1.08); color: #081018; }
+
+section { padding: 3.5rem 0; border-bottom: 1px solid var(--line); }
+h2 {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 1.35rem;
+  margin: 0 0 1.2rem;
+  color: var(--gold);
+}
+
+.grid { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1.1rem 1.15rem;
+}
+.card h3 { margin: 0 0 .4rem; font-size: 1rem; }
+.card p { margin: 0; color: var(--muted); font-size: .95rem; }
+
+pre, code { font-family: "IBM Plex Mono", ui-monospace, monospace; }
+pre {
+  background: #0a0c12;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  overflow: auto;
+  font-size: .88rem;
+  color: #c8d0f0;
+}
+kbd {
+  font-family: inherit;
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 .3rem;
+  color: var(--gold);
+}
+
+table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+th, td { text-align: left; padding: .5rem .4rem; border-bottom: 1px solid var(--line); }
+th { color: var(--gold); font-weight: 600; }
+
+footer {
+  padding: 2rem 0 3rem;
+  color: var(--muted);
+  font-size: .88rem;
+}
+footer .wrap { display: flex; flex-wrap: wrap; gap: 1rem; justify-content: space-between; }
+
+.prose { max-width: 44rem; }
+.prose p, .prose li { color: var(--muted); }
+.prose ul, .prose ol { padding-left: 1.25rem; }
+.prose li { margin: .35rem 0; }
+.tiny { color: var(--muted); font-size: .85rem; }
+
+@media (max-width: 640px) {
+  nav .links { display: none; }
+  .hero { min-height: 360px; }
+}

@@ -81,6 +81,9 @@ jobs:
         shell: bash
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross_linker }}
+          ADSCLI_BUNDLED_CLIENT_ID: ${{ secrets.ADSCLI_BUNDLED_CLIENT_ID }}
+          ADSCLI_BUNDLED_CLIENT_SECRET: ${{ secrets.ADSCLI_BUNDLED_CLIENT_SECRET }}
+          ADSCLI_BUNDLED_DEVELOPER_TOKEN: ${{ secrets.ADSCLI_BUNDLED_DEVELOPER_TOKEN }}
         run: |
           export ADSCLI_VERSION="${GITHUB_REF_NAME#v}"
           cargo build --release --target ${{ matrix.target }} -p adscli

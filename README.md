@@ -28,7 +28,7 @@ brew install dvaldivia/tap/adscli
 
 ```sh
 # Pick your tarball — linux/x86_64, linux/arm64, darwin/x86_64, darwin/arm64
-VERSION=0.0.1
+VERSION=0.0.2
 OS=linux ARCH=x86_64
 curl -sSL -o adscli.tar.gz \
   "https://github.com/dvaldivia/adscli/releases/download/v${VERSION}/adscli_${OS}_${ARCH}.tar.gz"
@@ -41,7 +41,7 @@ install -m 0755 adscli /usr/local/bin/adscli
 **Cargo install (from source):**
 
 ```sh
-cargo install --git https://github.com/dvaldivia/adscli --tag v0.0.1 adscli
+cargo install --git https://github.com/dvaldivia/adscli --tag v0.0.2 adscli
 ```
 
 **Build from source:**
@@ -73,31 +73,64 @@ adscli campaigns pause 123 --yes --json
 
 ## Auth
 
-You need **two credentials from two consoles**. A developer token alone cannot sign you in.
+Two separate credentials:
 
-| Credential | Where it comes from | What it is for |
+| Credential | Default | What it is for |
 |---|---|---|
-| OAuth Desktop client (`client_id` + `client_secret`) | [Google Cloud Console](https://console.cloud.google.com/) | Proves *who* you are. `adscli login` uses this to get a refresh token. |
-| Developer token | Google Ads **Admin → API Center** | Permits the *app* to call the API. Sent as `developer-token` on every request after login. |
+| OAuth Desktop client (`client_id` + `client_secret`) | **built into every binary** | Proves *who* you are. `adscli login` exchanges a browser consent for a refresh token. |
+| Developer token | **not shipped** | Permits the *app* to call the API. Sent as `developer-token` on every request after login. |
 
-adscli does **not** ship a shared OAuth client. The `adwords` scope is sensitive, so every user or company creates their own. `adscli login --help` repeats this setup.
+A developer token cannot sign you in. Login cannot call the API without a developer token.
 
-### 1. Google Cloud — OAuth Desktop client
+Same facts live in `adscli login --help` and `adscli --help`.
 
-1. Create or pick a [Google Cloud project](https://console.cloud.google.com/).
-2. Enable the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com) on that project.
-3. **APIs & Services → OAuth consent screen**
-   - User type **External** is fine for your own account.
-   - Add yourself as a **test user** while the app is unverified.
-   - Add scope `https://www.googleapis.com/auth/adwords`.
-4. **APIs & Services → Credentials → Create credentials → OAuth client ID**
-   - Application type: **Desktop app** (not Web, not Chrome).
-   - Download the JSON. Copy `client_id` and `client_secret`.
-   - Desktop clients already allow `http://127.0.0.1` as a redirect. Do not register a port.
+### Default OAuth client
 
-If the consent screen shows an unverified-app warning, click **Advanced → Go to &lt;project&gt; (unsafe)**.
+Every adscli build (Homebrew, release tarball, `cargo install`, local `cargo build`) compiles in this Desktop client:
 
-### 2. Google Ads — developer token
+```sh
+# compiled defaults — you do not need to export these
+ADSCLI_CLIENT_ID=REDACTED
+ADSCLI_CLIENT_SECRET=REDACTED
+```
+
+`adscli login` uses them unless something higher in the stack overrides. Typical first-time setup is only:
+
+```sh
+export ADSCLI_DEVELOPER_TOKEN=...   # still required for API calls
+adscli login
+adscli auth status --json           # has_oauth_client + oauth_from_bundle
+```
+
+Resolution, highest wins:
+
+1. `--client-id` / `--client-secret`
+2. `ADSCLI_CLIENT_ID` / `ADSCLI_CLIENT_SECRET`
+3. `client_id` / `client_secret` in the config file or `credentials.json`
+4. the compiled defaults above
+
+When (4) wins, `adscli auth status --json` and `adscli config show --json` report `has_oauth_client: true` and `oauth_from_bundle: true`. Those commands never print the secret. `has_bundled_oauth` is true in every current build (the defaults exist even if you overrode them for this process).
+
+Official release CI can still replace the compiled client (or inject a developer token) with `ADSCLI_BUNDLED_CLIENT_ID` / `ADSCLI_BUNDLED_CLIENT_SECRET` / `ADSCLI_BUNDLED_DEVELOPER_TOKEN` at compile time.
+
+Until Google [verifies](https://support.google.com/cloud/answer/9110914) the adscli consent screen, only **test users** listed on that screen can finish login. Everyone else hits the unverified-app wall (`Advanced → Go to adscli`). Branding (name, logo, [homepage](https://adscli.dev), [privacy policy](https://adscli.dev/privacy.html)) is what users see on the Allow page. Users still sign in as themselves; they do not create a Cloud project.
+
+### Why the secret is in the binary
+
+Google treats Desktop / installed apps as public clients: they [cannot keep secrets](https://developers.google.com/identity/protocols/oauth2/native-app). Anyone with the binary (or this README) can read the client id and secret. That is expected.
+
+A stolen client secret is not a password for anyone’s Google Ads account. It only lets another program say “I am the adscli OAuth client.” Google still requires a human to click Allow. Existing refresh tokens stay on each user’s machine (keychain or `credentials.json`), not in the binary.
+
+What a leak *does* enable:
+
+- a lookalike CLI that shows the adscli consent screen (users should install from Homebrew or the GitHub releases)
+- abuse of *this* Cloud project’s OAuth client (Google can disable it; rotate the secret in Cloud Console and cut a new release)
+
+PKCE (S256) protects the loopback `?code=` exchange. It does not hide the secret.
+
+The developer token is the sharper credential: it is the app’s API permit and quota. It is **not** compiled in. A leak of that token, plus any valid user refresh token, counts against adscli’s Ads quota and can get the token suspended. Official releases may bake one in via `ADSCLI_BUNDLED_DEVELOPER_TOKEN`; treat that as an ops incident if it leaks, not a user-data breach.
+
+### Developer token
 
 1. Sign in to a Google Ads **manager** account (MCC).
 2. **Admin → API Center** (or search “API Center”).
@@ -106,41 +139,52 @@ If the consent screen shows an unverified-app warning, click **Advanced → Go t
 
 `adscli login` does **not** send this token. Every later command (`customers`, `campaigns`, …) does.
 
-### 3. Configure adscli
+```sh
+export ADSCLI_DEVELOPER_TOKEN=...
+```
 
-Either export:
+or in `~/.config/adscli/config.yaml` / `.adscli.yaml` (Python `google-ads.yaml` field names work too):
+
+```yaml
+developer_token: "..."
+# client_id / client_secret — omit to use the built-in adscli client
+# customer_id: "123-456-7890"
+# login_customer_id: "098-765-4321"   # MCC, if you use one
+```
+
+### Bring your own client
+
+Only needed to use a **different** Google Cloud project.
+
+1. Create or pick a [Google Cloud project](https://console.cloud.google.com/).
+2. Enable the [Google Ads API](https://console.cloud.google.com/apis/library/googleads.googleapis.com).
+3. **APIs & Services → OAuth consent screen** — External is fine; add yourself as a test user while unverified; add scope `https://www.googleapis.com/auth/adwords`.
+4. **Credentials → Create credentials → OAuth client ID → Desktop app** (not Web). Download the JSON. Desktop clients already allow `http://127.0.0.1`; do not register a port.
+5. Override the built-ins:
 
 ```sh
 export ADSCLI_CLIENT_ID=....apps.googleusercontent.com
 export ADSCLI_CLIENT_SECRET=...
 export ADSCLI_DEVELOPER_TOKEN=...
+adscli login
+adscli auth status --json    # oauth_from_bundle: false
 ```
 
-or write `~/.config/adscli/config.yaml` or `.adscli.yaml` in the project (Python `google-ads.yaml` field names work too):
-
-```yaml
-developer_token: "..."
-client_id: "....apps.googleusercontent.com"
-client_secret: "..."
-# set after login, or export them:
-# customer_id: "123-456-7890"
-# login_customer_id: "098-765-4321"   # MCC, if you use one
-```
-
-### 4. Sign in
+### Sign in
 
 ```sh
 adscli login                    # opens the browser (PKCE + loopback)
 # adscli login --device         # no local HTTP server
 # adscli login --print-url      # print the URL, do not open a browser
-adscli auth status --json       # must show has_refresh_token and has_developer_token
+adscli auth status --json       # has_refresh_token + has_developer_token to call the API
+adscli config show --json       # same facts, plus oauth_from_bundle
 ```
 
 The refresh token is stored in the OS keychain, or in `~/.config/adscli/credentials.json` (mode `0600`) if the keychain is unavailable. Later commands refresh the access token silently.
 
 As of August 2026, Google may require a **passkey** when issuing a **new** Ads refresh token. Existing tokens keep working.
 
-### 5. Pick an account
+### Pick an account
 
 ```sh
 adscli customers list --json
@@ -151,7 +195,7 @@ adscli campaigns list --json --limit 5
 
 ### Agents
 
-Do not run `adscli login` from a script. After a human has logged in once, set `ADSCLI_REFRESH_TOKEN` (and the client id/secret + developer token) or point `--config` at the YAML above. Check `adscli auth status --json`.
+Do not run `adscli login` from a script. After a human has logged in once, set `ADSCLI_REFRESH_TOKEN` and `ADSCLI_DEVELOPER_TOKEN` (client id/secret only if you are not using the built-in client) or point `--config` at the YAML above. Check `adscli auth status --json`.
 
 ## Commands
 
