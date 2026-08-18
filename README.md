@@ -28,7 +28,7 @@ brew install dvaldivia/tap/adscli
 
 ```sh
 # Pick your tarball — linux/x86_64, linux/arm64, darwin/x86_64, darwin/arm64
-VERSION=0.0.3
+VERSION=0.0.4
 OS=linux ARCH=x86_64
 curl -sSL -o adscli.tar.gz \
   "https://github.com/dvaldivia/adscli/releases/download/v${VERSION}/adscli_${OS}_${ARCH}.tar.gz"
@@ -41,7 +41,7 @@ install -m 0755 adscli /usr/local/bin/adscli
 **Cargo install (from source):**
 
 ```sh
-cargo install --git https://github.com/dvaldivia/adscli --tag v0.0.3 adscli
+cargo install --git https://github.com/dvaldivia/adscli --tag v0.0.4 adscli
 ```
 
 **Build from source:**
