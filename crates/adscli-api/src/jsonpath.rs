@@ -26,13 +26,7 @@ pub fn walk<'a>(v: &'a Value, path: &str) -> Option<&'a Value> {
             continue;
         }
         let camel = snake_to_camel(part);
-        cur = cur
-            .get(part)
-            .or_else(|| cur.get(camel.as_str()))
-            .or_else(|| {
-                // REST sometimes nests the resource under its type name.
-                None
-            })?;
+        cur = cur.get(part).or_else(|| cur.get(camel.as_str()))?;
     }
     Some(cur)
 }

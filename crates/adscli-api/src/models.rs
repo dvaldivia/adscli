@@ -25,9 +25,7 @@ pub struct Metrics {
 
 impl Metrics {
     pub fn from_row(row: &Value) -> Option<Self> {
-        if row.get("metrics").is_none() {
-            return None;
-        }
+        row.get("metrics")?;
         Some(Self {
             impressions: get_i64(row, "metrics.impressions"),
             clicks: get_i64(row, "metrics.clicks"),

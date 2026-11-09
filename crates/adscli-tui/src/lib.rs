@@ -26,8 +26,7 @@ const FRAME_BUDGET: Duration = Duration::from_millis(16);
 
 pub fn start<B: AdsBrowser + Send + Sync + 'static>(browser: B) -> io::Result<()> {
     if !io::stdout().is_terminal() {
-        return Err(io::Error::new(
-            io::ErrorKind::Other,
+        return Err(io::Error::other(
             "no terminal detected — the default command opens an interactive TUI and requires a TTY",
         ));
     }

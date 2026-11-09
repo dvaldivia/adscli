@@ -451,7 +451,9 @@ pub fn wait_for_callback(
                 }
                 Err(e) => {
                     eprintln!("could not read a code from that line: {e}");
-                    eprintln!("paste the full http://127.0.0.1:?state=...&code=... URL and press Enter");
+                    eprintln!(
+                        "paste the full http://127.0.0.1:?state=...&code=... URL and press Enter"
+                    );
                 }
             }
         }
@@ -466,7 +468,7 @@ pub fn wait_for_callback(
                     None => continue,
                 };
                 let params = extract_oauth_params(&req);
-                if params.get("code").is_none() && params.get("error").is_none() {
+                if !params.contains_key("code") && !params.contains_key("error") {
                     // Empty sockets, TLS ClientHellos, favicon, `/`.
                     let _ = write_http(&mut stream, 204, "text/plain; charset=utf-8", "");
                     continue;
