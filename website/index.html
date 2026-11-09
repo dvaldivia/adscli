@@ -142,10 +142,11 @@ adscli campaigns list --json --limit 20</pre>
         Source builds do not include those values.
       </p>
       <p>
-        The Google Ads <strong>developer token is not shipped</strong>. Set
-        <code>ADSCLI_DEVELOPER_TOKEN</code> before API calls. Check
-        <code>adscli auth status --json</code> for <code>has_oauth_client</code>,
-        <code>oauth_from_bundle</code>, and <code>has_developer_token</code>.
+        There is <strong>no developer token</strong>: Google sunset them on
+        2026-09-09. The API access level and daily quota belong to the Google
+        Cloud project that owns the OAuth client. Check
+        <code>adscli auth status --json</code> for <code>authenticated</code>,
+        <code>has_oauth_client</code>, and <code>oauth_from_bundle</code>.
       </p>
       <p>Full behavior: <code>adscli login --help</code> and the README.</p>
     </div>

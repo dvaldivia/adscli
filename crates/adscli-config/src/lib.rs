@@ -9,9 +9,7 @@ mod ids;
 mod paths;
 mod store;
 
-pub use bundled::{
-    bundled_client_id, bundled_client_secret, bundled_developer_token, has_bundled_oauth,
-};
+pub use bundled::{bundled_client_id, bundled_client_secret, has_bundled_oauth};
 pub use file::{ConfigFile, CredentialsFile, redacted_map};
 pub use ids::{extract_resource_id, normalize_customer_id, resource_name, strip_customer_prefix};
 pub use paths::{ConfigPaths, config_paths};
@@ -25,10 +23,10 @@ use std::path::PathBuf;
 use thiserror::Error;
 
 /// Latest Google Ads API major version this binary speaks.
-pub const API_VERSION: &str = "v25";
+pub const API_VERSION: &str = "v26";
 
 /// Default REST origin including the API version path segment.
-pub const DEFAULT_API_BASE: &str = "https://googleads.googleapis.com/v25";
+pub const DEFAULT_API_BASE: &str = "https://googleads.googleapis.com/v26";
 
 /// OAuth scope required by every Google Ads API call.
 pub const ADWORDS_SCOPE: &str = "https://www.googleapis.com/auth/adwords";
@@ -61,6 +59,8 @@ pub enum ConfigError {
 pub struct Settings {
     pub api_base: String,
     pub api_version: String,
+    /// Legacy. Google sunset developer tokens on 2026-09-09; the API
+    /// ignores the header. Sent only when set, never required.
     pub developer_token: String,
     pub customer_id: String,
     pub login_customer_id: String,
@@ -74,8 +74,6 @@ pub struct Settings {
     pub token_store: Option<SecretBackend>,
     /// True when client_id/secret came from the publisher-bundled defaults.
     pub oauth_from_bundle: bool,
-    /// True when developer_token came from the publisher-bundled default.
-    pub developer_token_from_bundle: bool,
     pub config_path: Option<PathBuf>,
     pub credentials_path: PathBuf,
 }
@@ -96,7 +94,6 @@ impl Default for Settings {
             skip_token_refresh: false,
             token_store: None,
             oauth_from_bundle: false,
-            developer_token_from_bundle: false,
             config_path: None,
             credentials_path: ConfigPaths::default().credentials,
         }
@@ -120,8 +117,11 @@ impl Settings {
         !self.access_token.is_empty()
     }
 
+    /// OAuth credentials are all the API needs. Whether calls against
+    /// production accounts succeed depends on the access level of the
+    /// Cloud project that owns the OAuth client.
     pub fn can_call_api(&self) -> bool {
-        self.has_developer_token() && (self.has_access_token() || self.has_refresh_token())
+        self.has_access_token() || self.has_refresh_token()
     }
 }
 
@@ -203,16 +203,10 @@ fn apply_bundled(s: &mut Settings) {
         s.client_secret = secret.to_string();
         s.oauth_from_bundle = s.oauth_from_bundle || bundled_client_id().is_some();
     }
-    if let Some(tok) = bundled_developer_token() {
-        s.developer_token = tok.to_string();
-        s.developer_token_from_bundle = true;
-    }
 }
 
 fn apply_file(s: &mut Settings, f: &ConfigFile) {
-    if set_if(&mut s.developer_token, f.developer_token.as_deref()) {
-        s.developer_token_from_bundle = false;
-    }
+    set_if(&mut s.developer_token, f.developer_token.as_deref());
     set_if(&mut s.customer_id, f.customer_id.as_deref());
     set_if(&mut s.login_customer_id, f.login_customer_id.as_deref());
     if set_if(&mut s.client_id, f.client_id.as_deref())
@@ -259,12 +253,10 @@ fn apply_keyring(s: &mut Settings) {
 }
 
 fn apply_env(s: &mut Settings) {
-    if set_if(
+    set_if(
         &mut s.developer_token,
         std::env::var(ENV_DEVELOPER_TOKEN).ok().as_deref(),
-    ) {
-        s.developer_token_from_bundle = false;
-    }
+    );
     set_if(
         &mut s.customer_id,
         std::env::var(ENV_CUSTOMER_ID).ok().as_deref(),
@@ -298,9 +290,7 @@ fn apply_env(s: &mut Settings) {
 
 fn apply_overrides(s: &mut Settings, o: &CliOverrides) {
     set_if(&mut s.api_base, o.api_base.as_deref());
-    if set_if(&mut s.developer_token, o.developer_token.as_deref()) {
-        s.developer_token_from_bundle = false;
-    }
+    set_if(&mut s.developer_token, o.developer_token.as_deref());
     set_if(&mut s.customer_id, o.customer_id.as_deref());
     set_if(&mut s.login_customer_id, o.login_customer_id.as_deref());
     if set_if(&mut s.client_id, o.client_id.as_deref())

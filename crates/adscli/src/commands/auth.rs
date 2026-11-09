@@ -33,9 +33,8 @@ fn status(cli: &Cli) -> ExitCode {
         }
     } else {
         println!(
-            "authenticated={} developer_token={} refresh_token={} token_store={} oauth_from_bundle={} customer_id={}",
+            "authenticated={} refresh_token={} token_store={} oauth_from_bundle={} customer_id={}",
             st.authenticated,
-            st.has_developer_token,
             st.has_refresh_token,
             st.token_store.as_deref().unwrap_or("-"),
             st.oauth_from_bundle,
@@ -144,11 +143,6 @@ pub fn login(cli: &Cli, opts: &LoginOpts) -> ExitCode {
         }));
     } else {
         println!("signed in ({store})");
-        if !s.has_developer_token() {
-            eprintln!(
-                "note: API calls still need a developer token (ADSCLI_DEVELOPER_TOKEN or config.yaml)"
-            );
-        }
     }
     ExitCode::SUCCESS
 }

@@ -120,6 +120,13 @@ impl ApiError {
                     .into(),
             );
         }
+        if body.contains(PROJECT_NOT_APPROVED) {
+            // Access level belongs to the Cloud project that owns the
+            // OAuth client. A project with Test access cannot touch
+            // production accounts; logging in again does not help.
+            err.kind = ErrorKind::Permission;
+            err.suggestion = Some(PROJECT_NOT_APPROVED_FIX.into());
+        }
         err
     }
 
@@ -164,6 +171,12 @@ impl From<reqwest::Error> for ApiError {
     }
 }
 
+/// `AuthorizationError` returned (v25+) when the OAuth client's Cloud
+/// project only has Test access and the target is a production account.
+const PROJECT_NOT_APPROVED: &str = "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION";
+
+const PROJECT_NOT_APPROVED_FIX: &str = "the Google Cloud project that owns this OAuth client only has Test access; apply for Explorer access at https://console.cloud.google.com/google/ads-apis/overview (or use a Google Ads test account). Logging in again will not fix this";
+
 fn parse_google_failure(v: &Value) -> (Option<String>, Option<String>) {
     let details = v.pointer("/error/details").and_then(|d| d.as_array());
     let Some(details) = details else {
@@ -206,7 +219,7 @@ mod tests {
             "message": "Request contains an invalid argument.",
             "status": "INVALID_ARGUMENT",
             "details": [{
-              "@type": "type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure",
+              "@type": "type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure",
               "errors": [{
                 "errorCode": {"queryError": "UNRECOGNIZED_FIELD"},
                 "message": "Unrecognized field in the query: 'campaign.foo'."
@@ -218,6 +231,30 @@ mod tests {
         assert_eq!(err.kind, ErrorKind::Google);
         assert!(err.message.contains("Unrecognized field"));
         assert!(err.google_code.unwrap().contains("UNRECOGNIZED_FIELD"));
+    }
+
+    #[test]
+    fn test_access_project_points_at_access_levels() {
+        let body = r#"{
+          "error": {
+            "code": 403,
+            "message": "The caller does not have permission",
+            "status": "PERMISSION_DENIED",
+            "details": [{
+              "@type": "type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure",
+              "errors": [{
+                "errorCode": {"authorizationError": "CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION"},
+                "message": "The Cloud project is only approved for use with test accounts."
+              }]
+            }]
+          }
+        }"#;
+        let err = ApiError::from_http(403, body);
+        assert_eq!(err.kind, ErrorKind::Permission);
+        assert_eq!(err.kind.exit_code(), 4);
+        let fix = err.suggestion.unwrap();
+        assert!(fix.contains("Explorer access"));
+        assert!(fix.contains("console.cloud.google.com/google/ads-apis/overview"));
     }
 
     #[test]

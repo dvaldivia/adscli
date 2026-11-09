@@ -1,6 +1,6 @@
-//! Google Ads API v25 REST client.
+//! Google Ads API v26 REST client.
 //!
-//! Talks HTTP/JSON (`googleads.googleapis.com/v25`) rather than the generated
+//! Talks HTTP/JSON (`googleads.googleapis.com/v26`) rather than the generated
 //! gRPC stubs so the binary stays small and every request is inspectable via
 //! `--dry-run`.
 

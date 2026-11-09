@@ -6,7 +6,7 @@ use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use crate::commands;
 
 const LONG_ABOUT: &str = "\
-adscli is an agent-first CLI for the Google Ads API (v25).
+adscli is an agent-first CLI for the Google Ads API (v26).
 
 DISCOVERY (do this first):
   adscli --help
@@ -27,12 +27,20 @@ INTERACTIVE TUI (default, requires a TTY):
   which subcommand to use instead.
 
 CONFIGURATION (flag > env > file > official-build bundle):
-  ADSCLI_DEVELOPER_TOKEN   required for every API call
   ADSCLI_CUSTOMER_ID       10-digit account (dashes ok)
-  ADSCLI_LOGIN_CUSTOMER_ID MCC / manager account
+  ADSCLI_LOGIN_CUSTOMER_ID MCC / manager account, only when you reach the
+                           account through a manager
   ADSCLI_CLIENT_ID / ADSCLI_CLIENT_SECRET   optional; override a release-bundled client
   ADSCLI_REFRESH_TOKEN
   Config file: --config, ./.adscli.yaml, ~/.config/adscli/config.yaml
+
+API ACCESS (no developer token):
+  Google sunset developer tokens on 2026-09-09. OAuth is the only
+  credential. The access level (Test / Explorer / Basic / Standard) and
+  the daily operation quota belong to the Google Cloud project that owns
+  the OAuth client, not to you or your Ads account.
+  ADSCLI_DEVELOPER_TOKEN is still accepted and forwarded, but the API
+  ignores it. Do not set it for new setups.
 
 SSO LOGIN:
   adscli login                 open a browser (Desktop OAuth + PKCE)
@@ -44,7 +52,7 @@ SSO LOGIN:
 #[derive(Debug, Parser)]
 #[command(
     name = "adscli",
-    about = "Agent-first CLI and k9s-style TUI for the Google Ads API v25",
+    about = "Agent-first CLI and k9s-style TUI for the Google Ads API v26",
     long_about = LONG_ABOUT,
     disable_help_subcommand = true,
     arg_required_else_help = false,
@@ -71,7 +79,7 @@ pub struct Cli {
     #[arg(long, global = true, env = "ADSCLI_LOGIN_CUSTOMER_ID")]
     pub login_customer_id: Option<String>,
 
-    /// Google Ads developer token
+    /// legacy Google Ads developer token; optional and ignored by the API since 2026-09-09
     #[arg(long, global = true, env = "ADSCLI_DEVELOPER_TOKEN")]
     pub developer_token: Option<String>,
 
@@ -87,7 +95,7 @@ pub struct Cli {
     #[arg(long, global = true, env = "ADSCLI_REFRESH_TOKEN")]
     pub refresh_token: Option<String>,
 
-    /// REST origin including version, default https://googleads.googleapis.com/v25
+    /// REST origin including version, default https://googleads.googleapis.com/v26
     #[arg(long, global = true, env = "ADSCLI_API_BASE")]
     pub api_base: Option<String>,
 
@@ -202,8 +210,9 @@ Sign in to Google Ads with a browser (OAuth 2.0 Desktop / Installed app).
 OFFICIAL BUILDS (Homebrew / GitHub Release):
   Release CI compiles in a shared Desktop client from GitHub secrets
   (ADSCLI_BUNDLED_CLIENT_ID / SECRET). Those values are not in git.
-  Then `adscli login` is enough for OAuth. You still need
-  ADSCLI_DEVELOPER_TOKEN (or a bundled token) for API calls.
+  Then `adscli login` is all you need. There is no developer token:
+  Google sunset them on 2026-09-09 and ADSCLI_DEVELOPER_TOKEN is
+  ignored by the API.
 
   Check `adscli auth status --json` → oauth_from_bundle /
   has_oauth_client. Secrets are never printed.
@@ -227,19 +236,33 @@ ONE SHARED CLIENT (yes, branding is for this):
   binary; Google assumes installed apps cannot keep secrets.
   Extracting it does not grant anyone's Ads account — a human
   must still click Allow. PKCE still protects the loopback code
-  exchange. A leaked developer token is worse: it is the app's
-  API permit and quota.
+  exchange.
+
+API ACCESS LEVEL (belongs to the OAuth client's Cloud project):
+  Test       test accounts only (default after enabling the API)
+  Explorer   production accounts, 2,880 operations/day
+  Basic      production accounts, 15,000 operations/day
+  Standard   production accounts, unlimited
+
+  Everyone using the shared client shares that project's daily quota.
+  A Test-level project calling a production account fails with
+  CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION; logging in again does not
+  help. The project owner applies for the next level at
+  https://console.cloud.google.com/google/ads-apis/overview
+  Bring your own client (below) to get your own quota.
 
 SOURCE BUILDS / A DIFFERENT CLOUD PROJECT:
   1. Google Cloud project + enable Google Ads API
   2. OAuth consent screen, scope https://www.googleapis.com/auth/adwords
   3. Credentials → OAuth client ID → Desktop app
-  4. Google Ads Admin → API Center → developer token
-  5. export ADSCLI_CLIENT_ID ADSCLI_CLIENT_SECRET ADSCLI_DEVELOPER_TOKEN
+  4. Apply for Explorer access (production accounts) on
+     https://console.cloud.google.com/google/ads-apis/overview
+  5. export ADSCLI_CLIENT_ID ADSCLI_CLIENT_SECRET
      adscli login
 
   Desktop clients already allow http://127.0.0.1; do not register a port.
-  New refresh tokens (as of August 2026) may ask for a passkey.
+  Google requires a passkey on the account that authorizes a new
+  refresh token; a newly created passkey can take 7 days to be trusted.
 
 WHAT HAPPENS:
   1. adscli binds http://127.0.0.1 (loopback) and builds a consent URL
@@ -261,9 +284,9 @@ WHAT HAPPENS:
   (prefer pasting into the waiting prompt).
 
 AGENTS:
-  Do not call login from a script. Set ADSCLI_REFRESH_TOKEN and
-  ADSCLI_DEVELOPER_TOKEN (and client id/secret if this binary has
-  no bundle). Use `adscli auth status --json` to inspect whether
+  Do not call login from a script. Set ADSCLI_REFRESH_TOKEN (and
+  client id/secret if this binary has no bundle). Use
+  `adscli auth status --json` to inspect whether
   credentials are present. Use --device on a machine with no
   browser; use --code to exchange a code obtained elsewhere.
 ";
@@ -301,7 +324,7 @@ pub enum AuthCmd {
         #[command(flatten)]
         opts: LoginOpts,
     },
-    /// Show whether tokens, developer token, and the bundled OAuth client are configured (no secrets)
+    /// Show whether tokens and the bundled OAuth client are configured (no secrets)
     Status,
     /// Delete the cached credentials file and keychain entry
     Logout,

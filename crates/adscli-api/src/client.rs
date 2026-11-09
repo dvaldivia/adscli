@@ -87,12 +87,6 @@ pub struct AdsClient<T: Transport> {
 
 impl<T: Transport> AdsClient<T> {
     pub fn new(settings: Settings, transport: T) -> Result<Self, ApiError> {
-        if !settings.has_developer_token() {
-            return Err(ApiError::config(
-                "developer token is required (ADSCLI_DEVELOPER_TOKEN or config.yaml)",
-            )
-            .suggest("https://developers.google.com/google-ads/api/docs/get-started/dev-token"));
-        }
         if !settings.has_access_token() && !settings.has_refresh_token() {
             return Err(ApiError::auth("not authenticated"));
         }
@@ -119,11 +113,16 @@ impl<T: Transport> AdsClient<T> {
                 "Authorization".into(),
                 format!("Bearer {}", self.settings.access_token),
             ),
-            (
+        ];
+        // Legacy header: optional and ignored by the API since developer
+        // tokens were sunset (2026-09-09). Access now follows the Cloud
+        // project that owns the OAuth client. Sent only when configured.
+        if self.settings.has_developer_token() {
+            h.push((
                 "developer-token".into(),
                 self.settings.developer_token.clone(),
-            ),
-        ];
+            ));
+        }
         if !self.settings.login_customer_id.is_empty() {
             h.push((
                 "login-customer-id".into(),
@@ -890,11 +889,10 @@ mod tests {
 
     fn settings() -> Settings {
         Settings {
-            developer_token: "dev".into(),
             access_token: "tok".into(),
             skip_token_refresh: true,
             customer_id: "123".into(),
-            api_base: "https://example.test/v25".into(),
+            api_base: "https://example.test/v26".into(),
             ..Settings::default()
         }
     }

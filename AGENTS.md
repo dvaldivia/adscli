@@ -1,6 +1,6 @@
 # adscli
 
-Agent-first Google Ads CLI (API v25). Discover the interface from the binary — do not search the web.
+Agent-first Google Ads CLI (API v26). Discover the interface from the binary — do not search the web.
 
 ```
 adscli --help

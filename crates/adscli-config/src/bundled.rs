@@ -1,18 +1,21 @@
-//! Optional publisher-hosted OAuth client + developer token.
+//! Optional publisher-hosted OAuth client.
 //!
 //! Official release CI injects these at compile time via
-//! `ADSCLI_BUNDLED_CLIENT_ID` / `ADSCLI_BUNDLED_CLIENT_SECRET` /
-//! `ADSCLI_BUNDLED_DEVELOPER_TOKEN` (GitHub Actions secrets). Ordinary
-//! `cargo build` leaves them unset so source builds stay bring-your-own.
-//! Runtime env / config / flags still override these.
+//! `ADSCLI_BUNDLED_CLIENT_ID` / `ADSCLI_BUNDLED_CLIENT_SECRET` (GitHub
+//! Actions secrets). Ordinary `cargo build` leaves them unset so source
+//! builds stay bring-your-own. Runtime env / config / flags still
+//! override these.
 //!
 //! The Desktop secret is public-by-design once it lives in a release
-//! binary. It is kept out of git. The developer token is the app's API
-//! permit and quota — only bake it in if you accept that blast radius.
+//! binary. It is kept out of git.
+//!
+//! The OAuth client also decides API access: since Google sunset
+//! developer tokens (2026-09-09), the access level and daily operation
+//! quota belong to the Cloud project that owns this client. Everyone
+//! using the bundled client shares that project's quota.
 
 pub const BUNDLED_CLIENT_ID: Option<&str> = option_env!("ADSCLI_BUNDLED_CLIENT_ID");
 pub const BUNDLED_CLIENT_SECRET: Option<&str> = option_env!("ADSCLI_BUNDLED_CLIENT_SECRET");
-pub const BUNDLED_DEVELOPER_TOKEN: Option<&str> = option_env!("ADSCLI_BUNDLED_DEVELOPER_TOKEN");
 
 pub fn bundled_client_id() -> Option<&'static str> {
     nonempty(BUNDLED_CLIENT_ID)
@@ -20,10 +23,6 @@ pub fn bundled_client_id() -> Option<&'static str> {
 
 pub fn bundled_client_secret() -> Option<&'static str> {
     nonempty(BUNDLED_CLIENT_SECRET)
-}
-
-pub fn bundled_developer_token() -> Option<&'static str> {
-    nonempty(BUNDLED_DEVELOPER_TOKEN)
 }
 
 pub fn has_bundled_oauth() -> bool {
@@ -47,6 +46,5 @@ mod tests {
             assert!(bundled_client_secret().is_none());
             assert!(!has_bundled_oauth());
         }
-        assert!(bundled_developer_token().is_none() || option_env!("ADSCLI_BUNDLED_DEVELOPER_TOKEN").is_some());
     }
 }

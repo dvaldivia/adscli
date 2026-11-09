@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 authors.workspace = true
-description = "Google Ads API v25 REST client for adscli"
+description = "Google Ads API v26 REST client for adscli"
 
 [dependencies]
 adscli-config = { workspace = true }
